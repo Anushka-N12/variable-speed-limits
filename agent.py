@@ -11,11 +11,11 @@ class ACAgent:
     def __init__(self,  n_actions, min_s, max_s,
                  alpha=0.0003, gamma=0.99):   # Alpha is default learning rate
         self.gamma = gamma                    # Gamma is default discount factor
-        self.n_actions = n_actions
+        # self.n_actions = n_actions
         self.action = None
         self.action_space = gym.spaces.Box(low=np.array([min_s]), high=np.array([max_s]), dtype=np.float32)
 
-        self.ac = ACNetwork(n_actions, min_s, max_s)
+        self.ac = ACNetwork(min_s, max_s) # n_actions removed
         self.ac.compile(optimizer=Adam(learning_rate=alpha))
 
     def choose_action(self, observation, evaluate=False):
@@ -31,11 +31,11 @@ class ACAgent:
         self.action = action
         return action.numpy()[0]
 
-    def save_models(self):
+    def save_model(self):
         print('Saving models......')
         self.ac.save_weights(self.ac.cp_file)
         
-    def load_models(self):
+    def load_model(self):
         print('Loading models......')
         self.ac.load_weights(self.ac.cp_file)
 
@@ -44,7 +44,7 @@ class ACAgent:
         n_state = tf.convert_to_tensor([n_state], dtype=tf.float32)
         reward = tf.convert_to_tensor(reward, dtype=tf.float32)
 
-        with tf.GradientTape(persistent = True) as tape:
+        with tf.GradientTape() as tape:
             state_value, mean, std = self.ac(state)
             n_state_value, _, _ = self.ac(n_state)
             state_value = tf.squeeze(state_value)
@@ -52,7 +52,7 @@ class ACAgent:
             
             dist = tfd.Normal(loc=mean, scale=std)
             log_prob = dist.log_prob(self.action)
-            delta = reward + self.gamma*n_state_value(1-int(done)) - state_value
+            delta = reward + self.gamma*n_state_value*(1-int(done)) - state_value
             a_loss = log_prob*delta
             c_loss = delta**2
             t_loss = a_loss + c_loss

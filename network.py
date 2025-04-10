@@ -4,12 +4,12 @@ from tensorflow.keras.layers import Dense, Lambda
 import os  # To save model checkpoints
 
 class ACNetwork(keras.Model):
-    def __init__(self, n_actions, min_s, max_s,
+    def __init__(self, min_s, max_s, # n_actions,
                  l1_dims=1024, l2_dims=512,   # No. of neurons for full connected layers 1 & 2
                  name='acn', cp_dir='acn_cp'):      # Checkpoint Directory
 
         super(ACNetwork, self).__init__()
-        self.n_actions = n_actions
+        # self.n_actions = n_actions
         self.name = name
         self.cp_dir = cp_dir
         self.cp_file = os.path.join(self.cp_dir, name+'_ac')
