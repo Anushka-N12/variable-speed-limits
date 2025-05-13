@@ -8,7 +8,7 @@ from network import ACNetwork
 tfd = tfp.distributions
 
 class ACAgent:
-    def __init__(self,  n_actions, min_s, max_s,
+    def __init__(self, min_s, max_s, #n_actions,
                  alpha=0.0003, gamma=0.99):   # Alpha is default learning rate
         self.gamma = gamma                    # Gamma is default discount factor
         # self.n_actions = n_actions
