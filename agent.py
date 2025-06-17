@@ -3,7 +3,7 @@ from tensorflow.keras.optimizers import Adam
 import tensorflow_probability as tfp
 import gym
 import numpy as np
-from network import ACNetwork
+from network import SACNetwork
 from replay_buffer import ReplayBuffer 
 
 tfd = tfp.distributions
@@ -13,19 +13,23 @@ class ACAgent:
                  env=None, tau = 0.005, 
                  alpha=0.0003, gamma=0.99):   # Alpha is default learning rate
         self.gamma = gamma                    # Gamma is default discount factor
-        self.tau = tau
-                                              # Tau, reward_scale?
-        self.memory = ReplayBuffer(min_s, max_s, input_dims)
+        self.tau = tau                         # Tau, reward_scale?
+        self.memory = ReplayBuffer(max_size=100000, input_shape=input_dims)
 
         # self.n_actions = n_actions
         self.action = None
         self.action_space = gym.spaces.Box(low=np.array([min_s]), high=np.array([max_s]), dtype=np.float32)
 
-        self.ac = ACNetwork(min_s, max_s) # n_actions removed
+        self.ac = SACNetwork(min_s, max_s) # n_actions removed
         self.ac.compile(optimizer=Adam(learning_rate=alpha))
 
+        self.target_value = SACNetwork(min_s, max_s)
+        self.target_value.set_weights(self.ac.get_weights())  # Sync initially
+        self.target_weights = self.target_value.get_weights()
+        self.target_value.compile(optimizer=Adam(learning_rate=alpha))
+
         self.r_scale = r_scale
-        self.update_params(tau=1)  # update_network_parameters
+        self.update_params(tau=1)  # update network parameters
 
     def choose_action(self, observation, evaluate=False):
         state = tf.convert_to_tensor([observation], dtype=tf.float32)
@@ -48,8 +52,8 @@ class ACAgent:
             tau = self.tau
         weights = []
         targets = self.target_weights
-        for i, weight in enumerate(self.value.weights):
-            weights.append(weight * tau + targets[i]*(1-tau))
+        for w_main, w_target in zip(self.ac.value_f.weights, self.target_value.value_f.weights):
+            w_target.assign(tau * w_main + (1 - tau) * w_target)
 
         self.target_value.set_weights(weights)
 
@@ -94,7 +98,7 @@ class ACAgent:
             new_action, log_prob = self.ac.sample_normal(state)
             q_value = tf.squeeze(self.ac.get_q(tf.concat([state, new_action], axis=1)), 1)
 
-            actor_loss = tf.reduce_mean(log_prob - q_value)
+            actor_loss = tf.reduce_mean(alpha * log_prob - q_value)
 
         actor_grads = tape.gradient(actor_loss, self.ac.trainable_variables)
         self.ac.optimizer.apply_gradients(zip(actor_grads, self.ac.trainable_variables))

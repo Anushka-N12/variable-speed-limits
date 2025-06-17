@@ -1,7 +1,9 @@
 import numpy as np
 import casadi as cs
 from sym_metanet import engines, Network, Node, Link, Destination, MainstreamOrigin, MeteredOnRamp
+import sym_metanet
 
+# MetaNetEnv: A traffic simulation environment using the MetaNet framework
 class MetaNetEnv:
     def __init__(self):
         # Simulation parameters
@@ -62,12 +64,13 @@ class MetaNetEnv:
         )
 
         # Compile the symbolic MetaNet model to a CasADi function
-        engines.use("casadi", sym_type="SX")
+        sym_metanet.engines.use("casadi", sym_type="SX")
+        
         self.net.is_valid(raises=True)
         self.net.step(T=self.T, tau=tau, eta=eta, kappa=kappa, delta=delta)
 
         # Function F simulates one time step
-        self.F = engines.to_function(net=self.net, more_out=True, compact=1, T=self.T)
+        self.F = sym_metanet.engine.to_function(net=self.net, T=self.T)
 
     def reset(self):
         # Reset simulation time

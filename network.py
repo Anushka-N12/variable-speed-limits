@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow.keras as keras
 from tensorflow.keras.layers import Dense, Lambda
-import tensorflow_probabilities as tfp
+import tensorflow_probability as tfp
 
 import os  # To save model checkpoints
 
@@ -35,7 +35,7 @@ class SACNetwork(keras.Model):
 
         # Mean output (scaled to speed range)
         self.mean = Dense(1, activation='tanh')         # tanh gives [-1, 1]
-        self.scaled_mean = Lambda(lambda x: min_s + (max_s - min_s) * (x + 1) / 2)(self.mean)  # Scale to [min, max]
+        self.scaled_mean = Lambda(lambda x: min_s + (max_s - min_s) * (x + 1) / 2)  # Scale to [min, max]
 
         # Std Dev output (ensures positivity)
         self.std_dev = Dense(1, activation='softplus')  # Softplus ensures positive std dev
