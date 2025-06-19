@@ -2,6 +2,7 @@ import numpy as np
 from agent import ACAgent
 from utils import plot_learning_curve
 from sim_env import MetaNetEnv
+from replay_buffer import ReplayBuffer
 
 if __name__ == '__main__':
     env = MetaNetEnv()
@@ -50,8 +51,8 @@ if __name__ == '__main__':
             score += reward
 
             if not load_cp:
-                agent.learn(state, reward, next_state, done)
-            
+                agent.memory.store_transition(state, action, reward, next_state, done)
+
             state = next_state  # move to the next state
 
         score_history.append(score)

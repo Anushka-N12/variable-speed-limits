@@ -14,7 +14,7 @@ class SACNetwork(keras.Model):
         # self.n_actions = n_actions
         self.name = name
         self.cp_dir = cp_dir
-        self.cp_file = os.path.join(self.cp_dir, name+'_ac')
+        self.cp_file = os.path.join(self.cp_dir, name+'_ac'+'.weights.h5')
         self.min_s = min_s
         self.max_s = max_s
 

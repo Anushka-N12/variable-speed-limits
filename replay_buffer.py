@@ -11,6 +11,7 @@ class ReplayBuffer:
         self.terminal_mem = np.zeros(self.mem_size, dtype=bool)
     
     def store_transition(self, state, action, reward, n_state, done):
+        assert state.shape == self.state_mem[0].shape, "Mismatch in state shape"
         index = self.mem_cntr % self.mem_size
         self.state_mem[index] = state
         self.n_state_mem[index] = n_state
@@ -27,4 +28,8 @@ class ReplayBuffer:
         actions = self.action_mem[batch]
         rewards = self.reward_mem[batch]
         dones = self.terminal_mem[batch]
-        return states, actions, rewards, states, dones
+        return states, actions, rewards, n_states, dones
+    
+    def reset(self):
+        self.mem_cntr = 0
+

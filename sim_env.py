@@ -69,7 +69,6 @@ class MetaNetEnv:
         self.net.is_valid(raises=True)
         self.net.step(T=self.T, tau=tau, eta=eta, kappa=kappa, delta=delta)
 
-        # Function F simulates one time step
         self.F = sym_metanet.engine.to_function(net=self.net, T=self.T)
 
     def reset(self):
@@ -86,7 +85,7 @@ class MetaNetEnv:
 
     def step(self, action):
         # Convert agent's action (speed limit) into CasADi DM format
-        v_ctrl = cs.DM([float(action)])
+        # v_ctrl = cs.DM([float(action)])
 
         # Ramp metering rate (currently fixed)
         r = cs.DM.ones(1, 1)
@@ -94,8 +93,27 @@ class MetaNetEnv:
         # Retrieve current time step demand
         d = cs.DM(self.demands[self.time])
 
-        # Simulate one time step
-        self.rho, self.v, self.w, q, q_o = self.F(self.rho, self.v, self.w, v_ctrl, r, d)
+        # Split state
+        rho_L1 = self.rho[:4]
+        rho_L2 = self.rho[4:]
+        v_L1   = self.v[:4]
+        v_L2   = self.v[4:]
+        w_O1   = self.w[0:1]
+        w_O2   = self.w[1:2]
+
+        # Format action (speed limit)
+        v_ctrl_O1 = cs.DM([[float(action)]])
+        r_O2 = cs.DM([[1.0]])
+        d_O1 = cs.DM([[self.demands[self.time, 0]]])
+        d_O2 = cs.DM([[self.demands[self.time, 1]]])
+
+        # Call the MetaNet model
+        result = self.F(rho_L1, v_L1, rho_L2, v_L2, w_O1, w_O2, v_ctrl_O1, r_O2, d_O1, d_O2)
+
+        # Update internal state
+        self.rho = cs.vertcat(result[0], result[2])  # rho_L1 + rho_L2
+        self.v   = cs.vertcat(result[1], result[3])  # v_L1 + v_L2
+        self.w   = cs.vertcat(result[4], result[5])  # w_O1 + w_O2
 
         # Compute new state and reward
         next_state = self._build_state()

@@ -1,0 +1,9 @@
+tensorflow
+tensorflow-probability
+gym
+sym-metanet
+casadi
+numpy
+networkx
+matplotlib
+tf-keras
