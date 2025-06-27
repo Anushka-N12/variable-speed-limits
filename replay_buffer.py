@@ -2,6 +2,8 @@ import numpy as np
 
 class ReplayBuffer:
     def __init__(self, max_size, input_shape): #, n_actions
+        self.input_shape = (input_shape,) if isinstance(input_shape, int) else input_shape
+
         self.mem_size = max_size
         self.mem_cntr = 0
         self.state_mem = np.zeros((self.mem_size, *input_shape))

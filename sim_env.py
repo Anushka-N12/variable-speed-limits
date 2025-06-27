@@ -5,12 +5,27 @@ import sym_metanet
 
 # MetaNetEnv: A traffic simulation environment using the MetaNet framework
 class MetaNetEnv:
-    def __init__(self):
+    def __init__(self, reward_scale=0.01):
         # Simulation parameters
         self.T = 10 / 3600  # Time step duration (10 seconds in hours)
         self.Tfin = 2.5     # Total simulation time in hours
         self.time = 0
         self.timesteps = int(self.Tfin / self.T)  # Total number of steps to simulate
+        self.reward_scale = reward_scale  
+
+        self.current_action = 120
+        self.prev_action = 120
+        self.L = 1  # Link length
+        self.lanes = 2  # Number of lanes
+
+        # Synthetic parameters
+        self.free_flow_speed = 120
+        self.jam_density = 180
+        self.critical_density = 33.5
+
+        # For clarity
+        self.STATE_DIM = 2 + 6 + 6  # 2 speed limits + 6 speeds + 6 densities
+        self.ACTION_RANGE = [60, 120]
 
         # Demand profile over time (vehicles entering network)
         self.demands = self.create_demands()
@@ -24,9 +39,23 @@ class MetaNetEnv:
     def create_demands(self):
         # Create time-varying demand arrays using interpolation
         time = np.arange(0, self.Tfin, self.T)
-        d1 = np.interp(time, (2.0, 2.25), (3500, 1000))  # Mainstream origin demand
-        d2 = np.interp(time, (0.0, 0.15, 0.35, 0.5), (500, 1500, 1500, 500))  # On-ramp demand
+
+        # d1 = np.interp(time, (2.0, 2.25), (3500, 1000))  # Mainstream origin demand
+        # d2 = np.interp(time, (0.0, 0.15, 0.35, 0.5), (500, 1500, 1500, 500))  # On-ramp demand
+        
+        # More realistic dual-peak pattern
+        d1 = 2000 + 1500 * np.sin(2*np.pi*time/0.5)**2  # Mainstream
+        d2 = 500 + 300 * np.sin(2*np.pi*(time-0.25)/0.5)  # On-ramp
+
         return np.stack((d1, d2), axis=1)
+
+    def _generate_demand(self, t):
+    # Sinusoidal demand pattern
+        peak_hour = 0.25 + 0.2 * np.sin(2*np.pi*t/self.episode_length)
+        return {
+            'mainstream': 3000 * peak_hour,
+            'on_ramp': 800 * (1 - peak_hour)
+        }
 
     def build_network(self):
         # Road and model parameters
@@ -74,11 +103,12 @@ class MetaNetEnv:
     def reset(self):
         # Reset simulation time
         self.time = 0
-
+        self.current_action = 120
+        self.action = 120
         # Initial conditions for density (rho), speed (v), and on-ramp queue (w)
-        self.rho = cs.DM([22, 22, 22.5, 24, 30, 32])
-        self.v = cs.DM([80, 80, 78, 72.5, 66, 62])
-        self.w = cs.DM([0, 0])
+        self.rho = cs.DM([22, 22, 22.5, 24, 30, 32]).T  # Transpose for column vector
+        self.v = cs.DM([80, 80, 78, 72.5, 66, 62]).T
+        self.w = cs.DM([0, 0]).T
 
         # Return the initial state observation
         return self._build_state()
@@ -86,6 +116,13 @@ class MetaNetEnv:
     def step(self, action):
         # Convert agent's action (speed limit) into CasADi DM format
         # v_ctrl = cs.DM([float(action)])
+
+        # Validate input
+        if isinstance(action, np.ndarray):
+            action = float(action.item())
+
+        self.prev_action = self.current_action
+        self.current_action = action
 
         # Ramp metering rate (currently fixed)
         r = cs.DM.ones(1, 1)
@@ -127,12 +164,56 @@ class MetaNetEnv:
         return next_state, reward, done, {}
 
     def _build_state(self):
-        # Create a simple normalized state vector (e.g., speed normalized to [0,1])
-        return np.array([float(self.v[0]) / 120])  # Assuming v_free = 120 km/h
+        try:
+            # Convert and flatten all inputs
+            current = np.asarray(self.current_action/120).flatten()
+            prev = np.asarray(self.prev_action/120).flatten()
+            speeds = np.asarray(self.v).flatten() / self.free_flow_speed
+            densities = np.asarray(self.rho).flatten() / self.jam_density
+            
+            # Verify shapes
+            assert current.shape == (1,), f"Bad current action shape: {current.shape}"
+            assert prev.shape == (1,), f"Bad prev action shape: {prev.shape}"
+            assert speeds.shape == (6,), f"Bad speeds shape: {speeds.shape}"
+            assert densities.shape == (6,), f"Bad densities shape: {densities.shape}"
+            
+            return np.concatenate([current, prev, speeds, densities]).astype(np.float32)
+        
+        except Exception as e:
+            print(f"State construction failed: {e}")
+            print(f"Types - Current: {type(self.current_action)}, "
+                f"Prev: {type(self.prev_action)}, "
+                f"V: {type(self.v)}, R: {type(self.rho)}")
+            print(f"Shapes - V: {np.array(self.v).shape}, "
+                f"R: {np.array(self.rho).shape}")
+            # raise
 
     def _compute_reward(self):
-        # Basic reward: encourage higher speed and discourage high density
-        speed = float(self.v[0])
-        density = float(self.rho[0])
-        reward = (speed / 120) - (density / 180)  # Normalize both components
-        return reward
+        # Corrected stabilized reward calculation
+        # rho_np = np.array(self.rho).flatten()
+        # w_np = np.array(self.w).flatten()
+        
+        # epsilon = 1e-6  # Small constant to prevent division by zero
+        
+        # highway_veh_hours = np.sum(np.clip(rho_np, 0, None) * self.L * self.lanes + epsilon) * self.T
+        # queue_veh_hours = np.sum(np.clip(w_np, 0, None) + epsilon) * self.T
+        
+        # vehicle_hours = highway_veh_hours + queue_veh_hours
+        # return -np.tanh(vehicle_hours * self.reward_scale)
+
+        rho = np.clip(np.array(self.rho).flatten(), 0, self.jam_density)
+        w = np.clip(np.array(self.w).flatten(), 0, 1000)  # Arbitrary large queue limit
+
+        # Calculate components with numerical safeguards
+        highway = np.sum(rho * self.L * self.lanes) * self.T
+        queue = np.sum(w) * self.T
+
+        # Combined and scaled
+        total_hours = highway + queue
+        reward = -np.tanh(total_hours * self.reward_scale)
+        # NaN check and fallback
+        if np.isnan(reward):
+            print(f"NaN detected! rho: {rho}, w: {w}")
+            return -10  # Fallback reward
+        
+        return float(reward)

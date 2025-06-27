@@ -7,3 +7,4 @@ numpy
 networkx
 matplotlib
 tf-keras
+scipy
