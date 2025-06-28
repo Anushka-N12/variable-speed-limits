@@ -117,6 +117,11 @@ if __name__ == '__main__':
             agent.learn()
             history['train'].append(score)
 
+            # Debug: print mean and std of policy parameters
+            state_tensor = tf.convert_to_tensor([state], dtype=tf.float32)
+            mean, std = agent.ac.get_policy_params(state_tensor)
+            print(f"Mean: {mean.numpy().item():.2f}, Std: {std.numpy().item():.2f}")  # Debug print
+
             # print(state, action, score, current_action)
             
             if ep % 5 == 0:

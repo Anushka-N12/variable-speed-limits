@@ -25,6 +25,7 @@ class SACNetwork(keras.Model):
     def __init__(self, min_s, max_s, # n_actions,
                  l1_dims=32, l2_dims=64,   # No. of neurons for full connected layers 1 & 2
                  name='sacn', cp_dir='sacn_cp', alpha=0.01):      # Checkpoint Directory
+                 # Alpha used to be 0.0001, trying 0.01 now
 
         super(SACNetwork, self).__init__()
         # self.n_actions = n_actions

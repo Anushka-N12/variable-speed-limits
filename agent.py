@@ -18,7 +18,7 @@ tfd = tfp.distributions
 class ACAgent:
     def __init__(self, min_s, max_s, input_dims, r_scale, # n_actions,
                  env=None, tau = 0.005, 
-                 alpha=0.01, gamma=0.99):   
+                 alpha=0.01, gamma=0.99):   # Alpha used to be 0.0001, trying 0.01 now
         # Convert input_dims to integer if it's a sequence
         if isinstance(input_dims, (list, tuple)):
             input_dims = input_dims[0]
@@ -151,6 +151,7 @@ class ACAgent:
             
             # Get Q estimates
             q_values = tf.squeeze(self.critic([states, new_actions]))
+            print(f"Q values: {q_values.numpy()[:5]}")  # Debug print
             
             # V target = Q - α*logπ
             v_target = q_values - self.alpha * log_probs
@@ -183,13 +184,16 @@ class ACAgent:
             q_values = tf.squeeze(self.critic([states, new_actions]))
             
             # Policy objective: maximize (Q - α*logπ)
-            actor_loss = tf.reduce_mean(self.alpha * log_probs - q_values)
+            actor_loss = tf.reduce_mean( log_probs - q_values)#self.alpha *
+            print(f"Policy loss: {actor_loss.numpy():.6f}")
         
         # Define policy-specific variables (exclude value function)
-        policy_variables = (self.ac.l1.trainable_variables + 
+        policy_variables = (
+                        self.ac.l1.trainable_variables + 
                         self.ac.l2.trainable_variables + 
                         self.ac.mean.trainable_variables + 
-                        self.ac.std_dev.trainable_variables)
+                        self.ac.std_dev.trainable_variables
+                        )
         
         policy_grads = tape.gradient(actor_loss, policy_variables)
         
@@ -198,7 +202,9 @@ class ACAgent:
         if policy_grads and all(g is not None for g in policy_grads):
             policy_grads = tf.clip_by_global_norm(policy_grads, 1.0)[0]
             print("Avg policy/actor grad norm:", np.mean([tf.norm(g).numpy() for g in policy_grads if g is not None]))
+            print("Before:", policy_variables[0].numpy().flatten()[:5])
             self.ac.a_optimizer.apply_gradients(zip(policy_grads, policy_variables))
+            print("After:", policy_variables[0].numpy().flatten()[:5])
         else:
             print("Warning: Policy gradients are None!")
             # Debug: print which gradients are None
