@@ -1,6 +1,12 @@
-import os
+'''--------------------------------------------------------------------------------
+This file is the main script that has to be run. 
+It initializes the traffic simulation environment,
+creates the agent, and runs the training loop.
+It also handles evaluation and plotting of results.
+-----------------------------------------------------------------------------------'''
 
 # Set the environment variable to disable oneDNN optimizations
+import os
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import tensorflow as tf
@@ -11,7 +17,7 @@ from sim_env import MetaNetEnv
 import matplotlib.pyplot as plt
 
 def evaluate(agent, env, n_episodes=3):
-    """Proper evaluation function running complete episodes"""
+    # Proper evaluation function running complete episodes
     total = 0
     for _ in range(n_episodes):
         state = env.reset()
@@ -39,22 +45,22 @@ if __name__ == '__main__':
     # Initialize environment and agent
     env = MetaNetEnv()
     agent = ACAgent(
-        min_s=60,
-        max_s=120,
+        min_s=60,       # Minimum speed limit (km/h)
+        max_s=120,      # Maximum speed limit (km/h)
         input_dims=14,  # 2 speed limits + 6 speeds + 6 densities
-        r_scale=0.01,
-        tau=0.005,
-        alpha=3e-4,
-        gamma=0.99
+        r_scale=0.01,   # Reward scaling factor
+        tau=0.005,      # Soft update parameter
+        alpha=3e-4,     # Learning rate
+        gamma=0.99      # Discount factor
     )
     
-    # Training parameters
-    n_eps = 12
+    n_eps = 12             # Number of episodes to train
     control_interval = 30  # Steps between speed limit changes
     history = {'train': [], 'eval': []}
 
     # Main training loop
     for ep in range(n_eps): 
+
         state = env.reset()
         done = False
         score = 0
@@ -62,24 +68,25 @@ if __name__ == '__main__':
         current_action = 120
         
         # Warmup network
-        _ = agent.ac(tf.convert_to_tensor([state], dtype=tf.float32))
+        # _ = agent.ac(tf.convert_to_tensor([state], dtype=tf.float32))
         nan_detected = False
 
+        # Loops through steps in the episode
         while not done:
-            # Control logic
+
+            # Take action every `control_interval` steps
             if step % control_interval == 0:
                 action = agent.choose_action(state)
                 print(f"Action chosen: {action:.1f} at step {step}")
                 prev_action = current_action
                 current_action = action
             else:
-                action = current_action
+                action = current_action    # Use the last action for the next steps
             
-            # Environment step
-            next_state, reward, done, _ = env.step(action)
-            score += reward
+            next_state, reward, done, _ = env.step(action)  # Take step
+            score += reward                                 # Update score
 
-            # Debug prints
+            # Debug prints to observe values
             if step % 50 == 0:
                 print(f"Step {step}: VSL {action:.1f}, Reward {reward:.2f}, "
                       # f"Speeds {np.array(env.v).flatten()[::2]}")
@@ -91,7 +98,7 @@ if __name__ == '__main__':
                 nan_detected = True
                 break
             
-            # Store transition
+            # Store transition into agent memory
             agent.memory.store_transition(
                 np.array(state, dtype=np.float32),
                 action,
@@ -100,9 +107,11 @@ if __name__ == '__main__':
                 done
             )
             
+            # Update state and step count; move on to next step
             state = next_state
             step += 1
         
+        # End of episode
         # Learning and evaluation
         if not nan_detected:
             agent.learn()

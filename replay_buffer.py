@@ -1,9 +1,22 @@
+'''-------------------------------------------------------------------------------
+Replay Buffer:
+This module implements a replay buffer for storing and sampling transitions
+from the RL environment. It is used to store experiences during training
+and sample batches for learning updates.
+
+Storage includes:
+- State 
+- Next State
+- Action
+- Reward
+- Done flag (terminal state)
+---------------------------------------------------------------------------------'''
+
 import numpy as np
 
 class ReplayBuffer:
     def __init__(self, max_size, input_shape): #, n_actions
         self.input_shape = (input_shape,) if isinstance(input_shape, int) else input_shape
-
         self.mem_size = max_size
         self.mem_cntr = 0
         self.state_mem = np.zeros((self.mem_size, *input_shape))

@@ -1,3 +1,13 @@
+'''-----------------------------------------------------------------------------
+   MetaNet Traffic Simulation Environment:
+   This environment simulates a traffic network using the MetaNet framework,
+   allowing for reinforcement learning agents to control speed limits and
+   observe the resulting traffic dynamics.
+
+   It has been written with reference to the example files of the following framework repo:
+   https://github.com/FilippoAiraldi/sym-metanet
+--------------------------------------------------------------------------------'''
+
 import numpy as np
 import casadi as cs
 from sym_metanet import engines, Network, Node, Link, Destination, MainstreamOrigin, MeteredOnRamp
@@ -7,27 +17,28 @@ import sym_metanet
 class MetaNetEnv:
     def __init__(self, reward_scale=0.01):
         # Simulation parameters
-        self.T = 10 / 3600  # Time step duration (10 seconds in hours)
-        self.Tfin = 2.5     # Total simulation time in hours
-        self.time = 0
-        self.timesteps = int(self.Tfin / self.T)  # Total number of steps to simulate
-        self.reward_scale = reward_scale  
+        self.T = 10 / 3600                        # Time step duration (10 seconds in hours)
+        self.Tfin = 2.5                           # Total simulation time in hours
+        self.timesteps = int(self.Tfin / self.T)  # Total number of steps to simulate = 900
+        self.reward_scale = reward_scale          # Scaling factor for reward calculation
 
-        self.current_action = 120
+        self.time = 0
+        self.current_action = 120     # Initial speed limit (km/h)
         self.prev_action = 120
+
+        # Road parameters
         self.L = 1  # Link length
         self.lanes = 2  # Number of lanes
 
         # Synthetic parameters
-        self.free_flow_speed = 120
-        self.jam_density = 180
-        self.critical_density = 33.5
+        self.free_flow_speed = 120   # Max speed (used to normalize)
+        self.jam_density = 180       # Max density at which flow stops
+        self.critical_density = 33.5 # Density where flow is maximized
 
-        # For clarity
         self.STATE_DIM = 2 + 6 + 6  # 2 speed limits + 6 speeds + 6 densities
         self.ACTION_RANGE = [60, 120]
 
-        # Demand profile over time (vehicles entering network)
+        # Demand profile over time (vehicles entering network); inflow at points O1 & O2
         self.demands = self.create_demands()
 
         # Build the traffic network and compile the simulation function
@@ -37,40 +48,40 @@ class MetaNetEnv:
         self.reset()
 
     def create_demands(self):
+        # Simulates realistic dual-peak demand across simulation period
+        
         # Create time-varying demand arrays using interpolation
         time = np.arange(0, self.Tfin, self.T)
 
         # d1 = np.interp(time, (2.0, 2.25), (3500, 1000))  # Mainstream origin demand
         # d2 = np.interp(time, (0.0, 0.15, 0.35, 0.5), (500, 1500, 1500, 500))  # On-ramp demand
         
-        # More realistic dual-peak pattern
-        d1 = 2000 + 1500 * np.sin(2*np.pi*time/0.5)**2  # Mainstream
-        d2 = 500 + 300 * np.sin(2*np.pi*(time-0.25)/0.5)  # On-ramp
-
+        d1 = 2000 + 1500 * np.sin(2*np.pi*time/0.5)**2  # Mainstream; sinusoidal inflow at O1
+        d2 = 500 + 300 * np.sin(2*np.pi*(time-0.25)/0.5)  # On-ramp; sinusoidal inflow at O2
         return np.stack((d1, d2), axis=1)
 
-    def _generate_demand(self, t):
-    # Sinusoidal demand pattern
-        peak_hour = 0.25 + 0.2 * np.sin(2*np.pi*t/self.episode_length)
-        return {
-            'mainstream': 3000 * peak_hour,
-            'on_ramp': 800 * (1 - peak_hour)
-        }
+    # def _generate_demand(self, t):
+    # # Sinusoidal demand pattern
+    #     peak_hour = 0.25 + 0.2 * np.sin(2*np.pi*t/self.episode_length)
+    #     return {
+    #         'mainstream': 3000 * peak_hour,
+    #         'on_ramp': 800 * (1 - peak_hour)
+    #     }
 
     def build_network(self):
-        # Road and model parameters
+        # Road and model parameters; Network constants from METANET literature
         L = 1               # Link length (km)
         lanes = 2           # Number of lanes per link
         rho_max = 180       # Maximum density (veh/km/lane)
         rho_crit = 33.5     # Critical density (veh/km/lane)
         v_free = 102        # Free-flow speed (km/h)
         a = 1.867           # Model parameter (driver sensitivity)
-        C = (4000, 2000)    # Capacity for origins (veh/h)
+        C = (4000, 2000)    # Max Capacity for origins (veh/h); O1, O2
 
-        # MetaNet model parameters
-        tau = 18 / 3600     # Relaxation time (h)
-        kappa = 40          # Anticipation factor
-        eta = 60            # Merging priority
+        # MetaNet calibration parameters
+        tau = 18 / 3600     # Relaxation time (h); Driver reaction delay
+        kappa = 40          # Anticipation factor for downstream conditions
+        eta = 60            # Merging priority (on-ramp vs mainline)
         delta = 0.0122      # Smoothing parameter
 
         # Define network structure using nodes and links
@@ -82,6 +93,7 @@ class MetaNetEnv:
         O2 = MeteredOnRamp[cs.SX](C[1], name="O2")
         D1 = Destination[cs.SX](name="D1")
 
+        # Define links with segment counts
         L1 = Link[cs.SX](4, lanes, L, rho_max, rho_crit, v_free, a, name="L1")
         L2 = Link[cs.SX](2, lanes, L, rho_max, rho_crit, v_free, a, name="L2")
 
@@ -92,12 +104,10 @@ class MetaNetEnv:
             .add_origin(O2, N2)
         )
 
-        # Compile the symbolic MetaNet model to a CasADi function
+        # Compile the symbolic MetaNet model into a CasADi function
         sym_metanet.engines.use("casadi", sym_type="SX")
-        
         self.net.is_valid(raises=True)
         self.net.step(T=self.T, tau=tau, eta=eta, kappa=kappa, delta=delta)
-
         self.F = sym_metanet.engine.to_function(net=self.net, T=self.T)
 
     def reset(self):
@@ -105,12 +115,12 @@ class MetaNetEnv:
         self.time = 0
         self.current_action = 120
         self.action = 120
+
         # Initial conditions for density (rho), speed (v), and on-ramp queue (w)
         self.rho = cs.DM([22, 22, 22.5, 24, 30, 32]).T  # Transpose for column vector
         self.v = cs.DM([80, 80, 78, 72.5, 66, 62]).T
         self.w = cs.DM([0, 0]).T
 
-        # Return the initial state observation
         return self._build_state()
 
     def step(self, action):
@@ -124,22 +134,18 @@ class MetaNetEnv:
         self.prev_action = self.current_action
         self.current_action = action
 
-        # Ramp metering rate (currently fixed)
-        r = cs.DM.ones(1, 1)
+        # Inputs for MetaNet: demand, control, etc.
+        r = cs.DM.ones(1, 1)                # Ramp metering rate (currently fixed)
+        d = cs.DM(self.demands[self.time])  # Retrieve current time step demand
+        v_ctrl_O1 = cs.DM([[float(action)]])    # Format action (speed limit)
 
-        # Retrieve current time step demand
-        d = cs.DM(self.demands[self.time])
-
-        # Split state
+        # Split state; highway into L1 and L2 segments
         rho_L1 = self.rho[:4]
         rho_L2 = self.rho[4:]
         v_L1   = self.v[:4]
         v_L2   = self.v[4:]
         w_O1   = self.w[0:1]
         w_O2   = self.w[1:2]
-
-        # Format action (speed limit)
-        v_ctrl_O1 = cs.DM([[float(action)]])
         r_O2 = cs.DM([[1.0]])
         d_O1 = cs.DM([[self.demands[self.time, 0]]])
         d_O2 = cs.DM([[self.demands[self.time, 1]]])
@@ -160,7 +166,6 @@ class MetaNetEnv:
         self.time += 1
         done = self.time >= self.timesteps
 
-        # Return next state, reward, and done flag
         return next_state, reward, done, {}
 
     def _build_state(self):
@@ -201,16 +206,18 @@ class MetaNetEnv:
         # vehicle_hours = highway_veh_hours + queue_veh_hours
         # return -np.tanh(vehicle_hours * self.reward_scale)
 
+        # Encourage lower total time spent (TTS) on road + in ramp queues
         rho = np.clip(np.array(self.rho).flatten(), 0, self.jam_density)
         w = np.clip(np.array(self.w).flatten(), 0, 1000)  # Arbitrary large queue limit
 
-        # Calculate components with numerical safeguards
+        # Calculate veh-hours for highway and on-ramp queues, with numerical safeguards
         highway = np.sum(rho * self.L * self.lanes) * self.T
         queue = np.sum(w) * self.T
 
         # Combined and scaled
         total_hours = highway + queue
-        reward = -np.tanh(total_hours * self.reward_scale)
+        # reward = -np.tanh(total_hours * self.reward_scale)
+        reward = -total_hours       # Negative TTS as reward
         # NaN check and fallback
         if np.isnan(reward):
             print(f"NaN detected! rho: {rho}, w: {w}")
