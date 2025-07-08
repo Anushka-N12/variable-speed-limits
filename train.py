@@ -14,6 +14,7 @@ import numpy as np
 from agent import ACAgent
 from utils import plot_learning_curve
 from sim_env import MetaNetEnv
+# from sim_env_eg import TwoLinkEnv as MetaNetEnv  # Import the specific environment
 import matplotlib.pyplot as plt
 
 def evaluate(agent, env, n_episodes=3):
@@ -47,7 +48,7 @@ if __name__ == '__main__':
     agent = ACAgent(
         min_s=60,       # Minimum speed limit (km/h)
         max_s=120,      # Maximum speed limit (km/h)
-        input_dims=14,  # 2 speed limits + 6 speeds + 6 densities
+        input_dims=env.STATE_DIM,  # State dimensions
         r_scale=0.01,   # Reward scaling factor
         tau=0.005,      # Soft update parameter
         alpha=3e-4,     # Learning rate
@@ -70,6 +71,7 @@ if __name__ == '__main__':
         # Warmup network
         # _ = agent.ac(tf.convert_to_tensor([state], dtype=tf.float32))
         nan_detected = False
+        scores = []  # Store scores for this episode
 
         # Loops through steps in the episode
         while not done:
@@ -85,6 +87,7 @@ if __name__ == '__main__':
             
             next_state, reward, done, _ = env.step(action)  # Take step
             score += reward                                 # Update score
+            scores.append(score)                            # Store score for this episode
 
             # Debug prints to observe values
             if step % 50 == 0:
@@ -116,6 +119,7 @@ if __name__ == '__main__':
         if not nan_detected:
             agent.learn()
             history['train'].append(score)
+            print('Score list:', scores)  # Debug print
 
             # Debug: print mean and std of policy parameters
             state_tensor = tf.convert_to_tensor([state], dtype=tf.float32)
@@ -133,9 +137,10 @@ if __name__ == '__main__':
             print(f"Skipping learning due to NaN in episode {ep}")
 
     # Final results
+    # print(history)
     plot_results(history)
-    # plot_learning_curve(range(n_eps), history['train'], 'training_curve.png')
+    plot_learning_curve(range(n_eps), history['train'], 'training_curve.png')
 
     # Only plot the episodes that actually completed:
-    completed_episodes = len(history['train'])
-    plot_learning_curve(range(completed_episodes), history['train'], 'training_curve.png')
+    # completed_episodes = len(history['train'])
+    # plot_learning_curve(range(completed_episodes), history['train'], 'training_curve.png')

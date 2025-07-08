@@ -10,7 +10,7 @@
 
 import numpy as np
 import casadi as cs
-from sym_metanet import engines, Network, Node, Link, Destination, MainstreamOrigin, MeteredOnRamp
+from sym_metanet import engines, Network, Node, Link, Destination, MainstreamOrigin, MeteredOnRamp, LinkWithVsl
 import sym_metanet
 
 # MetaNetEnv: A traffic simulation environment using the MetaNet framework
@@ -21,10 +21,11 @@ class MetaNetEnv:
         self.Tfin = 2.5                           # Total simulation time in hours
         self.timesteps = int(self.Tfin / self.T)  # Total number of steps to simulate = 900
         self.reward_scale = reward_scale          # Scaling factor for reward calculation
-
         self.time = 0
-        self.current_action = 120     # Initial speed limit (km/h)
-        self.prev_action = 120
+
+        # Two VSL segments → two speed limits (Initial)
+        self.current_action = np.array([120.0, 120.0])  # shape (2,)
+        self.prev_action = np.array([120.0, 120.0])
 
         # Road parameters
         self.L = 1  # Link length
@@ -94,7 +95,9 @@ class MetaNetEnv:
         D1 = Destination[cs.SX](name="D1")
 
         # Define links with segment counts
-        L1 = Link[cs.SX](4, lanes, L, rho_max, rho_crit, v_free, a, name="L1")
+        # L1 = Link[cs.SX](4, lanes, L, rho_max, rho_crit, v_free, a, name="L1")
+        L1 = LinkWithVsl[cs.SX](4, lanes, L, rho_max, rho_crit, v_free, a,
+                       segments_with_vsl={2, 3}, alpha=0.1, name="L1")
         L2 = Link[cs.SX](2, lanes, L, rho_max, rho_crit, v_free, a, name="L2")
 
         # Define network layout (paths from origins to destinations)
@@ -107,83 +110,140 @@ class MetaNetEnv:
         # Compile the symbolic MetaNet model into a CasADi function
         sym_metanet.engines.use("casadi", sym_type="SX")
         self.net.is_valid(raises=True)
-        self.net.step(T=self.T, tau=tau, eta=eta, kappa=kappa, delta=delta)
-        self.F = sym_metanet.engine.to_function(net=self.net, T=self.T)
+        # self.net.step(T=self.T, tau=tau, eta=eta, kappa=kappa, delta=delta)
+        self.net.step(T=self.T, tau=tau, eta=eta,
+              kappa=kappa, delta=delta,
+              init_conditions={O1: {"v_ctrl": v_free}})
+
+        # self.F = sym_metanet.engine.to_function(net=self.net, T=self.T)
+        self.F = sym_metanet.engine.to_function(
+            net=self.net,
+            more_out=True,
+            compact=2,  # Use compact mode to match (x, u, d) input format
+            T=self.T,
+        )
+
 
     def reset(self):
         # Reset simulation time
         self.time = 0
-        self.current_action = 120
-        self.action = 120
+        self.current_action = np.array([120.0, 120.0]) 
+        self.action = np.array([120.0, 120.0])
 
         # Initial conditions for density (rho), speed (v), and on-ramp queue (w)
-        self.rho = cs.DM([22, 22, 22.5, 24, 30, 32]).T  # Transpose for column vector
-        self.v = cs.DM([80, 80, 78, 72.5, 66, 62]).T
-        self.w = cs.DM([0, 0]).T
+        # self.rho = cs.DM([22, 22, 22.5, 24, 30, 32]).T  # Transpose for column vector
+        # self.v = cs.DM([80, 80, 78, 72.5, 66, 62]).T
+        # self.w = cs.DM([0, 0]).T
+
+        self.rho = cs.DM([22, 22, 22.5, 24, 30, 32])
+        self.v = cs.DM([80, 80, 78, 72.5, 66, 62])
+        self.w = cs.DM([0, 0])
 
         return self._build_state()
 
-    def step(self, action):
-        # Convert agent's action (speed limit) into CasADi DM format
-        # v_ctrl = cs.DM([float(action)])
+    # def step(self, action):
+    #     # Convert agent's action (speed limit) into CasADi DM format
+    #     # v_ctrl = cs.DM([float(action)])
 
-        # Validate input
-        if isinstance(action, np.ndarray):
-            action = float(action.item())
+    #     # Validate input
+    #     if isinstance(action, np.ndarray):
+    #         action = float(action.item())
+
+    #     self.prev_action = self.current_action
+    #     self.current_action = action
+
+    #     # Inputs for MetaNet: demand, control, etc.
+    #     r = cs.DM.ones(1, 1)                # Ramp metering rate (currently fixed)
+    #     d = cs.DM(self.demands[self.time])  # Retrieve current time step demand
+    #     v_ctrl_O1 = cs.DM([[float(action)]])    # Format action (speed limit)
+
+    #     # Split state; highway into L1 and L2 segments
+    #     rho_L1 = self.rho[:4]
+    #     rho_L2 = self.rho[4:]
+    #     v_L1   = self.v[:4]
+    #     v_L2   = self.v[4:]
+    #     w_O1   = self.w[0:1]
+    #     w_O2   = self.w[1:2]
+    #     r_O2 = cs.DM([[1.0]])
+    #     d_O1 = cs.DM([[self.demands[self.time, 0]]])
+    #     d_O2 = cs.DM([[self.demands[self.time, 1]]])
+
+    #     # Call the MetaNet model
+    #     result = self.F(rho_L1, v_L1, rho_L2, v_L2, w_O1, w_O2, v_ctrl_O1, r_O2, d_O1, d_O2)
+
+    #     # Update internal state
+    #     self.rho = cs.vertcat(result[0], result[2])  # rho_L1 + rho_L2
+    #     self.v   = cs.vertcat(result[1], result[3])  # v_L1 + v_L2
+    #     self.w   = cs.vertcat(result[4], result[5])  # w_O1 + w_O2
+
+    #     # Compute new state and reward
+    #     next_state = self._build_state()
+    #     reward = self._compute_reward()
+
+    #     # Advance simulation time
+    #     self.time += 1
+    #     done = self.time >= self.timesteps
+
+    #     return next_state, reward, done, {}
+    
+    def step(self, action):
+        # Expecting a list/array with 2 values (for segments 2 and 3)
+        if isinstance(action, (float, int)):
+            action = np.array([action, action])
+        elif isinstance(action, list):
+            action = np.array(action)
+        assert action.shape == (2,), f"Expected action shape (2,), got {action.shape}"
 
         self.prev_action = self.current_action
         self.current_action = action
 
-        # Inputs for MetaNet: demand, control, etc.
-        r = cs.DM.ones(1, 1)                # Ramp metering rate (currently fixed)
-        d = cs.DM(self.demands[self.time])  # Retrieve current time step demand
-        v_ctrl_O1 = cs.DM([[float(action)]])    # Format action (speed limit)
-
-        # Split state; highway into L1 and L2 segments
-        rho_L1 = self.rho[:4]
-        rho_L2 = self.rho[4:]
-        v_L1   = self.v[:4]
-        v_L2   = self.v[4:]
-        w_O1   = self.w[0:1]
-        w_O2   = self.w[1:2]
+        v_ctrl_O1 = cs.DM(action.reshape(-1, 1))  # (2, 1)
         r_O2 = cs.DM([[1.0]])
-        d_O1 = cs.DM([[self.demands[self.time, 0]]])
-        d_O2 = cs.DM([[self.demands[self.time, 1]]])
+        u = cs.vertcat(v_ctrl_O1, r_O2)  # Now shape (3, 1)
 
-        # Call the MetaNet model
-        result = self.F(rho_L1, v_L1, rho_L2, v_L2, w_O1, w_O2, v_ctrl_O1, r_O2, d_O1, d_O2)
+        # Format inputs for MetaNet function
+        # v_ctrl = cs.DM([[float(action[0])], [float(action[1])]])  # if `action` is array-like
+        # u = cs.vertcat(v_ctrl, cs.DM([[1.0]]))
+        x = cs.vertcat(self.rho, self.v, self.w)                        # State: densities, speeds, queues
+        # u = cs.vertcat(cs.DM([float(action)]), cs.DM([1.0]))           # Control: speed limit + metering rate
+        d = cs.DM(self.demands[self.time])                             # Demand: from O1 and O2
+        # print("Expected u shape:", self.F.size1_in(1)) 
+        # Run MetaNet step
+        x_next, _ = self.F(x, u, d)  # Discard q_all (second output) for now
 
-        # Update internal state
-        self.rho = cs.vertcat(result[0], result[2])  # rho_L1 + rho_L2
-        self.v   = cs.vertcat(result[1], result[3])  # v_L1 + v_L2
-        self.w   = cs.vertcat(result[4], result[5])  # w_O1 + w_O2
+        # Split next state
+        self.rho = x_next[0:6]
+        self.v   = x_next[6:12]
+        self.w   = x_next[12:14]
 
-        # Compute new state and reward
+        # Construct new state, compute reward
         next_state = self._build_state()
         reward = self._compute_reward()
 
-        # Advance simulation time
         self.time += 1
         done = self.time >= self.timesteps
 
         return next_state, reward, done, {}
 
+
     def _build_state(self):
         try:
             # Convert and flatten all inputs
-            current = np.asarray(self.current_action/120).flatten()
-            prev = np.asarray(self.prev_action/120).flatten()
+            # current = np.asarray(self.current_action/120).flatten()
+            # prev = np.asarray(self.prev_action/120).flatten()
+            current = np.asarray(self.current_action / 120).flatten()
+            prev = np.asarray(self.prev_action / 120).flatten()
             speeds = np.asarray(self.v).flatten() / self.free_flow_speed
             densities = np.asarray(self.rho).flatten() / self.jam_density
             
             # Verify shapes
-            assert current.shape == (1,), f"Bad current action shape: {current.shape}"
-            assert prev.shape == (1,), f"Bad prev action shape: {prev.shape}"
+            assert current.shape == (2,), f"Bad current action shape: {current.shape}"
+            assert prev.shape == (2,), f"Bad prev action shape: {prev.shape}"
             assert speeds.shape == (6,), f"Bad speeds shape: {speeds.shape}"
             assert densities.shape == (6,), f"Bad densities shape: {densities.shape}"
-            
+
             return np.concatenate([current, prev, speeds, densities]).astype(np.float32)
-        
+                    
         except Exception as e:
             print(f"State construction failed: {e}")
             print(f"Types - Current: {type(self.current_action)}, "

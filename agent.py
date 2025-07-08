@@ -140,7 +140,7 @@ class ACAgent:
             critic_loss = 0.5 * tf.reduce_mean((q_pred - q_target)**2)
         
         critic_grad = tape.gradient(critic_loss, self.critic.trainable_variables)
-        critic_grad = tf.clip_by_global_norm(critic_grad, 1.0)[0]  # Clip gradients
+        # critic_grad = tf.clip_by_global_norm(critic_grad, 1.0)[0]  # Clip gradients
         print("Avg critic grad norm:", np.mean([tf.norm(g).numpy() for g in critic_grad if g is not None]))
         self.critic.optimizer.apply_gradients(zip(critic_grad, self.critic.trainable_variables))
 
@@ -169,7 +169,7 @@ class ACAgent:
         value_grad = tape.gradient(value_loss, value_variables)
         
         if value_grad and all(g is not None for g in value_grad):
-            value_grad = tf.clip_by_global_norm(value_grad, 1.0)[0]
+            # value_grad = tf.clip_by_global_norm(value_grad, 1.0)[0]
             print("Avg value grad norm:", np.mean([tf.norm(g).numpy() for g in value_grad if g is not None]))
             self.ac.v_optimizer.apply_gradients(zip(value_grad, value_variables))
         else:
