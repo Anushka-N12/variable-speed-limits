@@ -141,7 +141,7 @@ class ACAgent:
         
         critic_grad = tape.gradient(critic_loss, self.critic.trainable_variables)
         # critic_grad = tf.clip_by_global_norm(critic_grad, 1.0)[0]  # Clip gradients
-        print("Avg critic grad norm:", np.mean([tf.norm(g).numpy() for g in critic_grad if g is not None]))
+        # print("Avg critic grad norm:", np.mean([tf.norm(g).numpy() for g in critic_grad if g is not None]))
         self.critic.optimizer.apply_gradients(zip(critic_grad, self.critic.trainable_variables))
 
         # 2. Update Value Network
@@ -151,7 +151,7 @@ class ACAgent:
             
             # Get Q estimates
             q_values = tf.squeeze(self.critic([states, new_actions]))
-            print(f"Q values: {q_values.numpy()[:5]}")  # Debug print
+            # print(f"Q values: {q_values.numpy()[:5]}")  # Debug print
             
             # V target = Q - α*logπ
             v_target = q_values - self.alpha * log_probs
@@ -170,7 +170,7 @@ class ACAgent:
         
         if value_grad and all(g is not None for g in value_grad):
             # value_grad = tf.clip_by_global_norm(value_grad, 1.0)[0]
-            print("Avg value grad norm:", np.mean([tf.norm(g).numpy() for g in value_grad if g is not None]))
+            # print("Avg value grad norm:", np.mean([tf.norm(g).numpy() for g in value_grad if g is not None]))
             self.ac.v_optimizer.apply_gradients(zip(value_grad, value_variables))
         else:
             print("Warning: Value gradients are None!")
@@ -185,7 +185,7 @@ class ACAgent:
             
             # Policy objective: maximize (Q - α*logπ)
             actor_loss = tf.reduce_mean( log_probs - q_values)#self.alpha *
-            print(f"Policy loss: {actor_loss.numpy():.6f}")
+            # print(f"Policy loss: {actor_loss.numpy():.6f}")
         
         # Define policy-specific variables (exclude value function)
         policy_variables = (
@@ -201,12 +201,12 @@ class ACAgent:
         # Clip gradients to prevent exploding gradients
         if policy_grads and all(g is not None for g in policy_grads):
             policy_grads = tf.clip_by_global_norm(policy_grads, 1.0)[0]
-            print("Avg policy/actor grad norm:", np.mean([tf.norm(g).numpy() for g in policy_grads if g is not None]))
-            print("Before:", policy_variables[0].numpy().flatten()[:5])
+            # print("Avg policy/actor grad norm:", np.mean([tf.norm(g).numpy() for g in policy_grads if g is not None]))
+            # print("Before:", policy_variables[0].numpy().flatten()[:5])
             self.ac.a_optimizer.apply_gradients(zip(policy_grads, policy_variables))
-            print("After:", policy_variables[0].numpy().flatten()[:5])
+            # print("After:", policy_variables[0].numpy().flatten()[:5])
         else:
-            print("Warning: Policy gradients are None!")
+            # print("Warning: Policy gradients are None!")
             # Debug: print which gradients are None
             for var, grad in zip(policy_variables, policy_grads):
                 if grad is None:

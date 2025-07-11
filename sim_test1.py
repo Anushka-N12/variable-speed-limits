@@ -1,6 +1,6 @@
 from turtle import speed
 from sim_env import MetaNetEnv
-from sim_env_eg import TwoLinkEnv as MetaNetEnv2L  # Import the specific environment
+from sim_env_mcity import MCityRoadEnv    # Import the specific environment
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -10,14 +10,14 @@ results = {}
 
 for speed_limit in test_speeds:
     # env = MetaNetEnv()
-    env = MetaNetEnv2L()
+    env = MCityRoadEnv()
     state = env.reset()
     rewards = []
     tts_over_time = []
 
     done = False
     while not done:
-        action = np.array([120.0] * env.vsl_count)
+        action = np.array([speed_limit] * env.vsl_count)
         state, reward, done, _ = env.step(action)
         rewards.append(reward)
         rho = np.sum(np.array(env.rho).flatten())

@@ -12,7 +12,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import tensorflow as tf
 import numpy as np
 from agent import ACAgent
-from utils import plot_learning_curve
+from utils import *
 from sim_env import MetaNetEnv
 # from sim_env_eg import TwoLinkEnv as MetaNetEnv  # Import the specific environment
 import matplotlib.pyplot as plt
@@ -30,17 +30,6 @@ def evaluate(agent, env, n_episodes=3):
             episode_reward += reward
         total += episode_reward
     return total / n_episodes
-
-def plot_results(history):
-    plt.figure(figsize=(10,5))
-    plt.plot(history['train'], label='Training')
-    plt.plot(np.linspace(0, len(history['train'])-1, len(history['eval'])), 
-             history['eval'], 'r-', label='Evaluation')
-    plt.xlabel('Episode')
-    plt.ylabel('Score')
-    plt.legend()
-    plt.savefig('training_progress.png')
-    plt.show()
 
 if __name__ == '__main__':
     # Initialize environment and agent
@@ -72,14 +61,16 @@ if __name__ == '__main__':
         # _ = agent.ac(tf.convert_to_tensor([state], dtype=tf.float32))
         nan_detected = False
         scores = []  # Store scores for this episode
+        agent.speed_logs = [[] for _ in range(n_eps)]  # One empty list per episode  # Store list of episodes, each episode has list of segment speeds
 
         # Loops through steps in the episode
         while not done:
 
             # Take action every `control_interval` steps
             if step % control_interval == 0:
+                agent.learn()
                 action = agent.choose_action(state)
-                print(f"Action chosen: {action:.1f} at step {step}")
+                # print(f"Action chosen: {action:.1f} at step {step}")
                 prev_action = current_action
                 current_action = action
             else:
@@ -113,13 +104,15 @@ if __name__ == '__main__':
             # Update state and step count; move on to next step
             state = next_state
             step += 1
+
+            agent.speed_logs[ep].append(np.array(env.v).flatten())
         
         # End of episode
         # Learning and evaluation
         if not nan_detected:
             agent.learn()
             history['train'].append(score)
-            print('Score list:', scores)  # Debug print
+            # print('Score list:', scores)  # Debug print
 
             # Debug: print mean and std of policy parameters
             state_tensor = tf.convert_to_tensor([state], dtype=tf.float32)
@@ -140,6 +133,7 @@ if __name__ == '__main__':
     # print(history)
     plot_results(history)
     plot_learning_curve(range(n_eps), history['train'], 'training_curve.png')
+    plot_speeds_across_episodes(agent.speed_logs)
 
     # Only plot the episodes that actually completed:
     # completed_episodes = len(history['train'])

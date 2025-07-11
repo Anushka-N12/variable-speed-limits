@@ -73,7 +73,13 @@ class BaseMetaNetEnv:
         prev = np.asarray(self.prev_action / 120).flatten()
         speeds = np.asarray(self.v).flatten() / self.free_flow_speed
         densities = np.asarray(self.rho).flatten() / self.jam_density
-            
+
+        # Verify shapes
+        assert current.shape == (self.vsl_count,), f"Bad current action shape: {current.shape}"
+        assert prev.shape == (self.vsl_count,), f"Bad prev action shape: {prev.shape}"
+        assert speeds.shape == (self.n_segments,), f"Bad speeds shape: {speeds.shape}"
+        assert densities.shape == (self.n_segments,), f"Bad densities shape: {densities.shape}"
+
         state = np.concatenate([current, prev, speeds, densities]).astype(np.float32)
         assert state.shape[0] == self.STATE_DIM, f"State shape mismatch: expected {self.STATE_DIM}, got {state.shape[0]}"
         return state

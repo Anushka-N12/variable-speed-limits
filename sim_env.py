@@ -26,6 +26,8 @@ class MetaNetEnv:
         # Two VSL segments → two speed limits (Initial)
         self.current_action = np.array([120.0, 120.0])  # shape (2,)
         self.prev_action = np.array([120.0, 120.0])
+        self.vsl_count = 2  # Number of VSL segments
+        # self.n_segments = 2  # Total number of segments in the network
 
         # Road parameters
         self.L = 1  # Link length
@@ -36,7 +38,7 @@ class MetaNetEnv:
         self.jam_density = 180       # Max density at which flow stops
         self.critical_density = 33.5 # Density where flow is maximized
 
-        self.STATE_DIM = 2 + 6 + 6  # 2 speed limits + 6 speeds + 6 densities
+        self.STATE_DIM = 2 + 2 + 6 + 6  # 2 speed limits + 2 previous speed limits + 6 speeds + 6 densities
         self.ACTION_RANGE = [60, 120]
 
         # Demand profile over time (vehicles entering network); inflow at points O1 & O2
@@ -204,6 +206,7 @@ class MetaNetEnv:
         # Format inputs for MetaNet function
         # v_ctrl = cs.DM([[float(action[0])], [float(action[1])]])  # if `action` is array-like
         # u = cs.vertcat(v_ctrl, cs.DM([[1.0]]))
+        # print('Rho shape:', np.array(self.rho).shape, 'V shape:', np.array(self.v).shape, 'W shape:', np.array(self.w).shape)
         x = cs.vertcat(self.rho, self.v, self.w)                        # State: densities, speeds, queues
         # u = cs.vertcat(cs.DM([float(action)]), cs.DM([1.0]))           # Control: speed limit + metering rate
         d = cs.DM(self.demands[self.time])                             # Demand: from O1 and O2
@@ -243,6 +246,8 @@ class MetaNetEnv:
             assert densities.shape == (6,), f"Bad densities shape: {densities.shape}"
 
             return np.concatenate([current, prev, speeds, densities]).astype(np.float32)
+            # return np.concatenate([current, speeds, densities]).astype(np.float32)
+
                     
         except Exception as e:
             print(f"State construction failed: {e}")
@@ -277,7 +282,14 @@ class MetaNetEnv:
         # Combined and scaled
         total_hours = highway + queue
         # reward = -np.tanh(total_hours * self.reward_scale)
-        reward = -total_hours       # Negative TTS as reward
+        # reward = -total_hours * self.reward_scale  # Scale reward
+        reward = -total_hours
+        # reward = (-total_hours + 2)          
+        # reward = (-total_hours + 1)  
+        # reward = (-total_hours + 1) * 10 
+        # reward = (-total_hours + 0.5)         
+        # reward = (-total_hours + 0.5) * 10           # Negative TTS as reward
+
         # NaN check and fallback
         if np.isnan(reward):
             print(f"NaN detected! rho: {rho}, w: {w}")
