@@ -29,26 +29,21 @@ def plot_results(history):
     plt.show()
 
 def plot_speeds_across_episodes(speed_records):
-    if not speed_records or not speed_records[0]:
-        print("No speed data to plot.")
-        print(speed_records)
-        return
-
     # Convert to 2D arrays: one per episode
     episode_speeds = [np.vstack(ep) for ep in speed_records]
     n_segments = len(episode_speeds[0][0])
-    n_eps = len(episode_speeds)
+    # n_eps = len(episode_speeds)
 
-    for seg in range(n_segments):
-        plt.figure(figsize=(10, 4))
-        for ep in range(n_eps):
-            segment_speeds = episode_speeds[ep][:, seg]
-            plt.plot(segment_speeds, label=f'Ep {ep}')
-        plt.title(f'Segment {seg+1} Speed Across Episodes')
-        plt.xlabel('Timestep')
-        plt.ylabel('Speed (km/h)')
+    for seg in range(n_segments):  # 6 segments
+        plt.figure()
+        for i, ep_log in enumerate(episode_speeds):
+            speeds = [step_v[seg] for step_v in ep_log]  # Collect one segment across time
+            plt.plot(speeds, label=f"Ep {i}")
+        plt.title(f"Segment {seg+1} Speeds Across Valid Episodes")
+        plt.xlabel("Timestep")
+        plt.ylabel("Speed (km/h)")
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f'speed_seg{seg+1}.png')
-        plt.close()
+        plt.show()
+

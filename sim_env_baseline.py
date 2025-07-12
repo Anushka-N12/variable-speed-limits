@@ -49,6 +49,14 @@ class MetaNetEnv:
 
         # Initialize state variables
         self.reset()
+        self.baseline_tts = self.run_baseline()  # shape (900,) 
+    
+    def run_baseline(self):
+        baseline_tts = []
+        for _ in range(self.timesteps):
+            _, reward, _, _ = self.step([120, 120], baseline=True)
+            baseline_tts.append(-reward)  # Because reward is -TTS at this step
+        return np.array(baseline_tts)
 
     def create_demands(self):
         # Simulates realistic dual-peak demand across simulation period
@@ -180,7 +188,7 @@ class MetaNetEnv:
 
     #     return next_state, reward, done, {}
     
-    def step(self, action):
+    def step(self, action, baseline=False):
         # Expecting a list/array with 2 values (for segments 2 and 3)
         if isinstance(action, (float, int)):
             action = np.array([action, action])
@@ -213,7 +221,7 @@ class MetaNetEnv:
 
         # Construct new state, compute reward
         next_state = self._build_state()
-        reward = self._compute_reward()
+        reward = self._compute_reward(baseline=baseline)
 
         self.time += 1
         done = self.time >= self.timesteps
@@ -276,16 +284,21 @@ class MetaNetEnv:
         # reward = -np.tanh(total_hours * self.reward_scale)
         # reward = -total_hours * self.reward_scale  # Scale reward
         # reward = total_hours * self.reward_scale  
-        reward = -total_hours
+        # reward = -total_hours
         # reward = (-total_hours + 2)          
         # reward = (-total_hours + 1)  
         # reward = (-total_hours + 1) * 10 
         # reward = (-total_hours + 0.5)         
         # reward = (-total_hours + 0.5) * 10           # Negative TTS as reward
 
-        # NaN check and fallback
-        if np.isnan(reward):
-            print(f"NaN detected! rho: {rho}, w: {w}")
-            return -10  # Fallback reward
+        # # NaN check and fallback
+        # if np.isnan(reward):
+        #     print(f"NaN detected! rho: {rho}, w: {w}")
+        #     return -10  # Fallback reward
+        
+        if not baseline:
+            reward = -(self.baseline_tts[self.time] - total_hours)  # Reward is difference from baseline
+        else: 
+            reward = -total_hours
         
         return float(reward)

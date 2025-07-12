@@ -26,10 +26,11 @@ class ACAgent:
         self.alpha = alpha     # Alpha is default learning rate
         self.gamma = gamma     # Gamma is default discount factor
         self.tau = tau         # Soft update parameter
+        self.entropy_coef = 0.9  # Default entropy coefficient
 
         buffer_input_shape = (input_dims,) if isinstance(input_dims, int) else input_dims   # Handle both int and tuple input_dims
         self.memory = ReplayBuffer(max_size=100000, input_shape=buffer_input_shape)
-        self.batch_size = 32
+        self.batch_size = 30
         self.reward_scale = 0.01
         self.min_s = min_s
         self.max_s = max_s  
@@ -184,7 +185,7 @@ class ACAgent:
             q_values = tf.squeeze(self.critic([states, new_actions]))
             
             # Policy objective: maximize (Q - α*logπ)
-            actor_loss = tf.reduce_mean( log_probs - q_values)#self.alpha *
+            actor_loss = tf.reduce_mean( log_probs - q_values) * self.entropy_coef
             # print(f"Policy loss: {actor_loss.numpy():.6f}")
         
         # Define policy-specific variables (exclude value function)
