@@ -21,6 +21,8 @@ from tensorflow.keras.optimizers import Adam, SGD
 
 import os  # To save model checkpoints
 
+tf.random.set_seed(42)
+
 class SACNetwork(keras.Model):
     def __init__(self, min_s, max_s, # n_actions,
                  l1_dims=32, l2_dims=64,   # No. of neurons for full connected layers 1 & 2

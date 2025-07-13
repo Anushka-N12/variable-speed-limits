@@ -11,15 +11,12 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import tensorflow as tf
 import numpy as np
-from agent import ACAgent
+from agent_new import ACAgent
 from utils import *
-from sim_env import MetaNetEnv
-# from sim_env_baseline import MetaNetEnv
+# from sim_env import MetaNetEnv
+from sim_env_mcity_new import MCityRoadEnv as MetaNetEnv
 # from sim_env_eg import TwoLinkEnv as MetaNetEnv  # Import the specific environment
 import matplotlib.pyplot as plt
-
-np.random.seed(42)
-tf.random.set_seed(42)
 
 def evaluate(agent, env, n_episodes=3):
     # Proper evaluation function running complete episodes

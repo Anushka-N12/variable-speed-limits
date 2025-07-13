@@ -1,6 +1,7 @@
 from turtle import speed
 from sim_env import MetaNetEnv
-from sim_env_mcity import MCityRoadEnv    # Import the specific environment
+# from sim_env_mcity import MCityRoadEnv as MetaNetEnv    # Import the specific environment
+from sim_env_mohd import MohdRoadEnv as MetaNetEnv
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -9,8 +10,7 @@ test_speeds = [120, 100, 80, 60]
 results = {}
 
 for speed_limit in test_speeds:
-    # env = MetaNetEnv()
-    env = MCityRoadEnv()
+    env = MetaNetEnv()
     state = env.reset()
     rewards = []
     tts_over_time = []

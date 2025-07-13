@@ -13,6 +13,8 @@ import casadi as cs
 from sym_metanet import engines, Network, Node, Link, Destination, MainstreamOrigin, MeteredOnRamp, LinkWithVsl
 import sym_metanet
 
+np.random.seed(42)
+
 # MetaNetEnv: A traffic simulation environment using the MetaNet framework
 class MetaNetEnv:
     def __init__(self, reward_scale=0.01):
@@ -282,6 +284,10 @@ class MetaNetEnv:
         # reward = (-total_hours + 1) * 10 
         # reward = (-total_hours + 0.5)         
         # reward = (-total_hours + 0.5) * 10           # Negative TTS as reward
+        # Encourage higher VSLs when traffic is not congested
+        
+        # vsl_term = np.mean(self.current_action) / self.free_flow_speed  # Normalize to [0,1]
+        # reward += vsl_term * 1
 
         # NaN check and fallback
         if np.isnan(reward):

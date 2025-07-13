@@ -14,7 +14,6 @@ from network import SACNetwork, CriticNetwork
 from replay_buffer import ReplayBuffer 
 
 tfd = tfp.distributions
-tf.random.set_seed(42)
 
 class ACAgent:
     def __init__(self, min_s, max_s, input_dims, r_scale, # n_actions,
@@ -27,7 +26,7 @@ class ACAgent:
         self.alpha = alpha     # Alpha is default learning rate
         self.gamma = gamma     # Gamma is default discount factor
         self.tau = tau         # Soft update parameter
-        self.entropy_coef = 1#0.9  # Default entropy coefficient
+        self.entropy_coef = 0.5  # Default entropy coefficient
 
         buffer_input_shape = (input_dims,) if isinstance(input_dims, int) else input_dims   # Handle both int and tuple input_dims
         self.memory = ReplayBuffer(max_size=100000, input_shape=buffer_input_shape)

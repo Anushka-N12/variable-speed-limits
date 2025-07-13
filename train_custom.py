@@ -14,7 +14,8 @@ import numpy as np
 from agent import ACAgent
 from utils import *
 # from sim_env import MetaNetEnv
-from sim_env_eg import TwoLinkEnv as MetaNetEnv  # Import the specific environment
+# from sim_env_eg import TwoLinkEnv as MetaNetEnv  # Import the specific environment
+from sim_env_deira import DeiraEnv as MetaNetEnv
 import matplotlib.pyplot as plt
 
 def evaluate(agent, env, n_episodes=3):
