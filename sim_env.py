@@ -275,11 +275,11 @@ class MetaNetEnv:
 
         # Combined and scaled
         total_hours = highway + queue
-        reward = -np.tanh(total_hours * self.reward_scale)
+        # reward = -np.tanh(total_hours * self.reward_scale)
         # reward = -total_hours * self.reward_scale  # Scale reward
         # reward = total_hours * self.reward_scale  
-        # reward = -total_hours
-        reward = total_hours
+        reward = -total_hours
+        # reward = total_hours
         # reward = (-total_hours + 2)          
         # reward = (-total_hours + 1)  
         # reward = (-total_hours + 1) * 10 
