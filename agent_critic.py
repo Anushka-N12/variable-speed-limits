@@ -26,10 +26,10 @@ class ACAgent:
 
         # self.alpha = alpha     # Alpha is default learning rate
         self.lr = 1e-4                      # learning rate (used in optimizer)
-        self.alpha_optimizer = SGD(learning_rate=self.lr, clipnorm=1.0)
+        self.alpha_optimizer = Adam(learning_rate=self.lr, clipnorm=1.0)
 
         self.log_alpha = tf.Variable(0.0, trainable=True)  # for entropy tuning
-        self.alpha = tf.exp(self.log_alpha)                # entropy coefficient
+        # self.alpha = tf.exp(self.log_alpha)                # entropy coefficient
         # Target entropy (heuristic: -|action_dim|)
         self.target_entropy = -1.0  # for 1D continuous action
 
@@ -48,27 +48,38 @@ class ACAgent:
         self.action = None
         self.action_space = gym.spaces.Box(low=np.array([min_s]), high=np.array([max_s]), dtype=np.float32)
 
-        self.optimizer = SGD(learning_rate=self.lr)    # Initialize optimizer
+        # self.optimizer = Adam(learning_rate=self.lr)    # Initialize optimizer
         # Tried Adam, trying SGD now 
 
         # Joint network for Actor and Value function
         self.ac = SACNetwork(min_s, max_s) # n_actions removed
         self.ac.compile(optimizer=self.alpha_optimizer)
 
-        # Critic network for Q-function
-        self.critic = CriticNetwork() #min_s, max_s) 
-        self.critic.compile(optimizer=self.alpha_optimizer)
+        # Critic 1 and its target
+        self.critic1 = CriticNetwork()
+        self.critic1_target = CriticNetwork()
+        self.critic1.compile(optimizer=Adam(learning_rate=self.lr, clipnorm=1.0))
+        self.critic1_target.compile(optimizer=Adam(learning_rate=self.lr, clipnorm=1.0))
+        self.critic1_target.set_weights(self.critic1.get_weights())
+
+        # Critic 2 and its target
+        self.critic2 = CriticNetwork()
+        self.critic2_target = CriticNetwork()
+        self.critic2.compile(optimizer=Adam(learning_rate=self.lr, clipnorm=1.0))
+        self.critic2_target.compile(optimizer=Adam(learning_rate=self.lr, clipnorm=1.0))
+        self.critic2_target.set_weights(self.critic2.get_weights())
 
         # Target value network for soft updates
         self.target_value = SACNetwork(min_s, max_s)
-        self.target_value.compile(optimizer=self.alpha_optimizer)
+        self.target_value.compile(optimizer=Adam(learning_rate=self.lr, clipnorm=1.0))
 
         # Build networks explicitly; should trigger build
         test_state = tf.random.normal((1, input_dims))
         test_action = tf.random.normal((1, 1))
         _ = self.ac(test_state)  
         _ = self.target_value(test_state)
-        _ = self.critic([test_state, test_action])  
+        _ = self.critic1([test_state, test_action])  
+        _ = self.critic2([test_state, test_action])  
 
         # Initialize target network weights to match main network
         self.target_value.set_weights(self.ac.get_weights()) 
@@ -76,6 +87,10 @@ class ACAgent:
 
         self.r_scale = r_scale
         self.update_params(tau=1)  # update network parameters
+    
+    @property
+    def alpha(self):
+        return tf.exp(self.log_alpha)
 
     def choose_action(self, observation, evaluate=False):
         # Selects an action based on the current observation
@@ -111,6 +126,13 @@ class ACAgent:
         # Set the updated weights
         self.target_value.set_weights(updated_weights)
 
+        for target, main in zip(self.critic1_target.weights, self.critic1.weights):
+            target.assign(self.tau * main + (1 - self.tau) * target)
+
+        for target, main in zip(self.critic2_target.weights, self.critic2.weights):
+            target.assign(self.tau * main + (1 - self.tau) * target)
+
+
     def save_model(self):
         print('Saving model......')
         self.ac.save_weights(self.ac.cp_file)
@@ -135,55 +157,80 @@ class ACAgent:
         dones = tf.convert_to_tensor(dones, dtype=tf.float32)
 
         # 1. Update Q-function (Critic)
-        with tf.GradientTape() as tape:
-            # Get V(next_state) from target network
-            next_v, _, _ = self.target_value(next_states)  # Get value from target
-            next_v = tf.squeeze(next_v)
+        # with tf.GradientTape() as tape:
+        #     # Get V(next_state) from target network
+        #     next_v, _, _ = self.target_value(next_states)  # Get value from target
+        #     next_v = tf.squeeze(next_v)
             
-            # Q target = r + γ(1-done)V(next_state)
-            q_target = rewards + self.gamma * (1 - dones) * next_v
+        #     # Q target = r + γ(1-done)V(next_state)
+        #     q_target = rewards + self.gamma * (1 - dones) * next_v
             
-            # Current Q estimate
-            q_pred = tf.squeeze(self.critic([states, tf.expand_dims(actions, -1)]))
+        #     # Current Q estimate
+        #     q_pred = tf.squeeze(self.critic([states, tf.expand_dims(actions, -1)]))
             
-            # MSE loss
-            critic_loss = 0.5 * tf.reduce_mean((q_pred - q_target)**2)
-        
-        critic_grad = tape.gradient(critic_loss, self.critic.trainable_variables)
-        # critic_grad = tf.clip_by_global_norm(critic_grad, 1.0)[0]  # Clip gradients
-        # print("Avg critic grad norm:", np.mean([tf.norm(g).numpy() for g in critic_grad if g is not None]))
-        self.critic.optimizer.apply_gradients(zip(critic_grad, self.critic.trainable_variables))
+        #     # MSE loss
+        #     critic_loss = 0.5 * tf.reduce_mean((q_pred - q_target)**2)
 
-        # 2. Update Value Network
-        with tf.GradientTape() as tape:
-            # Sample new actions from current policy
-            new_actions, log_probs = self.ac.sample_normal(states)
+        # critic_grad = tape.gradient(critic_loss, self.critic.trainable_variables)
+        # self.critic.optimizer.apply_gradients(zip(critic_grad, self.critic.trainable_variables))
+
+        with tf.GradientTape(persistent=True) as tape:
+            # Q1 and Q2 targets
+            next_action, next_log_prob = self.ac.sample_normal(next_states)
+            q1_next = self.critic1_target([next_states, next_action])
+            q2_next = self.critic2_target([next_states, next_action])
+            min_q_next = tf.minimum(q1_next, q2_next)
+
+            # Target Q value using entropy
+            q_target = rewards + self.gamma * (1 - dones) * (
+                tf.squeeze(min_q_next) - self.alpha * tf.squeeze(next_log_prob)
+            )
+
+            # Current Q-values for critic 1
+            q1_pred = tf.squeeze(self.critic1([states, tf.expand_dims(actions, -1)]), 1)
+            critic1_loss = 0.5 * tf.reduce_mean((q1_pred - q_target)**2)
+
+            # Current Q-values for critic 2
+            q2_pred = tf.squeeze(self.critic2([states, tf.expand_dims(actions, -1)]), 1)
+            critic2_loss = 0.5 * tf.reduce_mean((q2_pred - q_target)**2)
+
+            # Gradients
+            grad1 = tape.gradient(critic1_loss, self.critic1.trainable_variables)
+            grad2 = tape.gradient(critic2_loss, self.critic2.trainable_variables)
+
+            self.critic1.optimizer.apply_gradients(zip(grad1, self.critic1.trainable_variables))
+            self.critic2.optimizer.apply_gradients(zip(grad2, self.critic2.trainable_variables))
+
+        # # 2. Update Value Network
+        # with tf.GradientTape() as tape:
+        #     # Sample new actions from current policy
+        #     new_actions, log_probs = self.ac.sample_normal(states)
             
-            # Get Q estimates
-            q_values = tf.squeeze(self.critic([states, new_actions]))
-            # print(f"Q values: {q_values.numpy()[:5]}")  # Debug print
+        #     # Get Q estimates
+        #     q_values = tf.squeeze(self.critic([states, new_actions]))
+        #     # print(f"Q values: {q_values.numpy()[:5]}")  # Debug print
             
-            # V target = Q - α*logπ
-            v_target = q_values - self.alpha * log_probs
+        #     # V target = Q - α*logπ
+        #     v_target = q_values - self.alpha * log_probs
             
-            # Current V estimate
-            v_pred = tf.squeeze(self.ac.get_value(states))
+        #     # Current V estimate
+        #     v_pred = tf.squeeze(self.ac.get_value(states))
             
-            # MSE loss
-            value_loss = 0.5 * tf.reduce_mean((v_pred - tf.stop_gradient(v_target))**2)
+        #     # MSE loss
+        #     value_loss = 0.5 * tf.reduce_mean((v_pred - tf.stop_gradient(v_target))**2)
         
-        # Only update value function variables
-        value_variables = (self.ac.l1.trainable_variables + 
-                       self.ac.l2.trainable_variables + 
-                       self.ac.value_f.trainable_variables)
-        value_grad = tape.gradient(value_loss, value_variables)
+        # # Only update value function variables
+        # value_variables = (self.ac.l1.trainable_variables + 
+        #                self.ac.l2.trainable_variables + 
+        #                self.ac.value_f.trainable_variables)
+        # value_grad = tape.gradient(value_loss, value_variables)
         
-        if value_grad and all(g is not None for g in value_grad):
-            # value_grad = tf.clip_by_global_norm(value_grad, 1.0)[0]
-            # print("Avg value grad norm:", np.mean([tf.norm(g).numpy() for g in value_grad if g is not None]))
-            self.ac.v_optimizer.apply_gradients(zip(value_grad, value_variables))
-        else:
-            print("Warning: Value gradients are None!")
+        # if value_grad and all(g is not None for g in value_grad):
+        #     # value_grad = tf.clip_by_global_norm(value_grad, 1.0)[0]
+        #     # print("Avg value grad norm:", np.mean([tf.norm(g).numpy() for g in value_grad if g is not None]))
+        #     self.ac.v_optimizer.apply_gradients(zip(value_grad, value_variables))
+        # else:
+        #     print("Warning: Value gradients are None!")
 
         # 3. Update Policy (Actor)
         with tf.GradientTape() as tape:
@@ -191,7 +238,9 @@ class ACAgent:
             new_actions, log_probs = self.ac.sample_normal(states)
             
             # Get Q estimates
-            q_values = tf.squeeze(self.critic([states, new_actions]))
+            q1 = tf.squeeze(self.critic1([states, new_actions]))
+            q2 = tf.squeeze(self.critic2([states, new_actions]))
+            q_values = tf.minimum(q1, q2)
             
             # Policy objective: maximize (Q - α*logπ)
             # actor_loss = tf.reduce_mean( log_probs - q_values) * self.entropy_coef
@@ -235,5 +284,6 @@ class ACAgent:
         self.alpha_optimizer.apply_gradients(zip(alpha_grads, [self.log_alpha]))
 
         # Update alpha
-        self.alpha.assign(tf.exp(self.log_alpha))
+        # self.alpha.assign(tf.exp(self.log_alpha))
+
 

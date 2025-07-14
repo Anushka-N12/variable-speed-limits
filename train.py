@@ -11,7 +11,8 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import tensorflow as tf
 import numpy as np
-from agent import ACAgent
+# from agent import ACAgent
+from agent_critic import ACAgent
 from utils import *
 from sim_env import MetaNetEnv
 # from sim_env_baseline import MetaNetEnv

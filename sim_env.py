@@ -275,15 +275,17 @@ class MetaNetEnv:
 
         # Combined and scaled
         total_hours = highway + queue
-        # reward = -np.tanh(total_hours * self.reward_scale)
+        reward = -np.tanh(total_hours * self.reward_scale)
         # reward = -total_hours * self.reward_scale  # Scale reward
         # reward = total_hours * self.reward_scale  
-        reward = -total_hours
+        # reward = -total_hours
+        reward = total_hours
         # reward = (-total_hours + 2)          
         # reward = (-total_hours + 1)  
         # reward = (-total_hours + 1) * 10 
         # reward = (-total_hours + 0.5)         
         # reward = (-total_hours + 0.5) * 10           # Negative TTS as reward
+        # reward = 1/total_hours
         # Encourage higher VSLs when traffic is not congested
         
         # vsl_term = np.mean(self.current_action) / self.free_flow_speed  # Normalize to [0,1]

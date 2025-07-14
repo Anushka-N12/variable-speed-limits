@@ -89,8 +89,10 @@ class SACNetwork(keras.Model):
         _, mean, std_dev = self.call(state)
         probabilities = tfp.distributions.Normal(mean, std_dev)     # Create distribution
         actions = probabilities.sample()                            # Sample action 
-        action = tf.math.tanh(actions) * self.max_s                 # Apply tanh to squash action into range [-1, 1], 
+        # action = tf.math.tanh(actions) * self.max_s                 # Apply tanh to squash action into range [-1, 1], 
                                                                     # then scale to max speed
+        # mean is already scaled by scaled_mean, just clip
+        action = tf.clip_by_value(actions, self.min_s, self.max_s)
 
         # Compute log probability of sampled actions (used for entropy regularization and actor loss)
         log_probs = probabilities.log_prob(actions)
