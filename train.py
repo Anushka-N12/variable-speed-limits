@@ -14,7 +14,8 @@ import numpy as np
 # from agent import ACAgent
 from agent_critic import ACAgent
 from utils import *
-from sim_env import MetaNetEnv
+# from sim_env import MetaNetEnv
+from sim_env_mcity2 import MetaNetEnv
 # from sim_env_baseline import MetaNetEnv
 # from sim_env_eg import TwoLinkEnv as MetaNetEnv  # Import the specific environment
 import matplotlib.pyplot as plt
@@ -105,6 +106,7 @@ if __name__ == '__main__':
                 np.array(next_state, dtype=np.float32),
                 done
             )
+            # print('Adding action & reward into memory: ', action, reward)
             
             # Update state and step count; move on to next step
             state = next_state
@@ -138,7 +140,7 @@ if __name__ == '__main__':
     # print(history)
     plot_results(history)
     plot_learning_curve(range(n_eps), history['train'], 'training_curve.png')
-    plot_speeds_across_episodes(agent.speed_logs)
+    # plot_speeds_across_episodes(agent.speed_logs)
 
     # Only plot the episodes that actually completed:
     # completed_episodes = len(history['train'])

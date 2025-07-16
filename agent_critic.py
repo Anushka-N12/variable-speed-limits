@@ -12,6 +12,7 @@ import gym
 import numpy as np
 from network import SACNetwork, CriticNetwork
 from replay_buffer import ReplayBuffer 
+import matplotlib.pyplot as plt
 
 tfd = tfp.distributions
 tf.random.set_seed(42)
@@ -87,6 +88,9 @@ class ACAgent:
 
         self.r_scale = r_scale
         self.update_params(tau=1)  # update network parameters
+
+        self.summary_writer = tf.summary.create_file_writer("logs/")
+        self.total_steps = 0  # Count how many times learn() is called
     
     @property
     def alpha(self):
@@ -194,12 +198,12 @@ class ACAgent:
             q2_pred = tf.squeeze(self.critic2([states, tf.expand_dims(actions, -1)]), 1)
             critic2_loss = 0.5 * tf.reduce_mean((q2_pred - q_target)**2)
 
-            # Gradients
-            grad1 = tape.gradient(critic1_loss, self.critic1.trainable_variables)
-            grad2 = tape.gradient(critic2_loss, self.critic2.trainable_variables)
+        # Gradients
+        grad1 = tape.gradient(critic1_loss, self.critic1.trainable_variables)
+        grad2 = tape.gradient(critic2_loss, self.critic2.trainable_variables)
 
-            self.critic1.optimizer.apply_gradients(zip(grad1, self.critic1.trainable_variables))
-            self.critic2.optimizer.apply_gradients(zip(grad2, self.critic2.trainable_variables))
+        self.critic1.optimizer.apply_gradients(zip(grad1, self.critic1.trainable_variables))
+        self.critic2.optimizer.apply_gradients(zip(grad2, self.critic2.trainable_variables))
 
         # # 2. Update Value Network
         # with tf.GradientTape() as tape:
@@ -285,5 +289,15 @@ class ACAgent:
 
         # Update alpha
         # self.alpha.assign(tf.exp(self.log_alpha))
+
+        with self.summary_writer.as_default():
+            tf.summary.scalar('Critic1 Loss', critic1_loss, step=self.total_steps)
+            tf.summary.scalar('Critic2 Loss', critic2_loss, step=self.total_steps)
+            tf.summary.scalar('Actor Loss', actor_loss, step=self.total_steps)
+            tf.summary.scalar('Reward', tf.reduce_mean(rewards), step=self.total_steps)
+            tf.summary.scalar('Alpha (Entropy Coeff)', self.alpha, step=self.total_steps)
+
+        self.total_steps += 1
+
 
 

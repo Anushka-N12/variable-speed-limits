@@ -1,7 +1,7 @@
 from turtle import speed
 from sim_env import MetaNetEnv
 # from sim_env_mcity import MCityRoadEnv as MetaNetEnv    # Import the specific environment
-from sim_env_mohd import MohdRoadEnv as MetaNetEnv
+# from sim_env_mohd import MohdRoadEnv as MetaNetEnv
 import matplotlib.pyplot as plt
 import numpy as np
 

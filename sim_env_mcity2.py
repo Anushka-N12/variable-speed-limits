@@ -29,10 +29,10 @@ class MetaNetEnv:
         self.current_action = np.array([120.0, 120.0])  # shape (2,)
         self.prev_action = np.array([120.0, 120.0])
         self.vsl_count = 2  # Number of VSL segments
-        self.n_segments = 2  # Total number of segments in the network
+        self.n_segments = 6  # Total number of segments in the network
 
         # Road parameters
-        self.L = 1  # Link length
+        self.L = 1.5  # Link length
         self.lanes = 2  # Number of lanes
 
         # Synthetic parameters
@@ -67,8 +67,8 @@ class MetaNetEnv:
 
     def build_network(self):
         # Road and model parameters; Network constants from METANET literature
-        # L = 1               # Link length (km)
-        # lanes = 2           # Number of lanes per link
+        # L = 1.5               # Link length (km)
+        lanes = 2           # Number of lanes per link
         rho_max = 180       # Maximum density (veh/km/lane)
         rho_crit = 33.5     # Critical density (veh/km/lane)
         v_free = 102        # Free-flow speed (km/h)
@@ -92,15 +92,24 @@ class MetaNetEnv:
 
         # Define links with segment counts
         # L1 = Link[cs.SX](4, lanes, L, rho_max, rho_crit, v_free, a, name="L1")
-        L1 = LinkWithVsl[cs.SX](4, self.lanes, self.L, rho_max, rho_crit, v_free, a,
-                       segments_with_vsl={2, 3}, alpha=0.1, name="L1")
-        L2 = Link[cs.SX](2, self.lanes, self.L, rho_max, rho_crit, v_free, a, name="L2")
+        L1 = LinkWithVsl[cs.SX](3, lanes, self.L, rho_max, rho_crit, v_free, a,
+                       segments_with_vsl={1, 2}, alpha=0.1, name="L1")
+        L2 = Link[cs.SX](2, lanes, self.L, rho_max, rho_crit, v_free, a, name="L2")
+
+        O2 = MeteredOnRamp[cs.SX](C[1], name="O2")
+        R2 = Link[cs.SX](1, 2, 0.1, rho_max, rho_crit, v_free, a, name="L3")
 
         # Define network layout (paths from origins to destinations)
+        # self.net = (
+        #     Network(name="A1")
+        #     .add_path(origin=O1, path=(N1, L1, N2, L2, N3), destination=D1)
+        #     .add_origin(O2, N2)
+        # )
         self.net = (
-            Network(name="A1")
+            Network("Test")
             .add_path(origin=O1, path=(N1, L1, N2, L2, N3), destination=D1)
-            .add_origin(O2, N2)
+            .add_path(origin=O2, path=(N3, R2))
+            .add_origin(O1, N1)
         )
 
         # Compile the symbolic MetaNet model into a CasADi function
@@ -123,16 +132,16 @@ class MetaNetEnv:
     def reset(self):
         # Reset simulation time
         self.time = 0
-        self.current_action = np.array([120.0] * self.vsl_count) 
-        self.action = np.array([120.0, 120.0] * self.vsl_count)
+        self.current_action = np.array([80.0] * self.vsl_count)
+        self.action = np.array([80.0] * self.vsl_count)
 
         # Initial conditions for density (rho), speed (v), and on-ramp queue (w)
         # self.rho = cs.DM([22, 22, 22.5, 24, 30, 32]).T  # Transpose for column vector
         # self.v = cs.DM([80, 80, 78, 72.5, 66, 62]).T
         # self.w = cs.DM([0, 0]).T
 
-        self.rho = cs.DM([22, 22, 22.5, 24, 30, 32])  # Need to change when n_segments changes
-        self.v = cs.DM([80, 80, 78, 72.5, 66, 62])
+        self.rho = cs.DM([22, 22, 22.5, 24, 30])
+        self.v = cs.DM([80, 80, 78, 72.5, 66])
         self.w = cs.DM([0, 0])
 
         return self._build_state()
@@ -188,7 +197,7 @@ class MetaNetEnv:
             action = np.array([action, action])
         elif isinstance(action, list):
             action = np.array(action)
-        assert action.shape == (self.vsl_count,), f"Expected action shape ({self.vsl_count},), got {action.shape}"
+        assert action.shape == (2,), f"Expected action shape (2,), got {action.shape}"
 
         self.prev_action = self.current_action
         self.current_action = action
@@ -209,9 +218,9 @@ class MetaNetEnv:
         x_next, _ = self.F(x, u, d)  # Discard q_all (second output) for now
 
         # Split next state
-        self.rho = x_next[0:6]     # Must be changed when n_segment changes
-        self.v   = x_next[6:12]
-        self.w   = x_next[12:14]
+        self.rho = x_next[0:5]
+        self.v   = x_next[5:10]
+        self.w   = x_next[10:12]
 
         # Construct new state, compute reward
         next_state = self._build_state()
@@ -234,8 +243,8 @@ class MetaNetEnv:
             densities = np.asarray(self.rho).flatten() / self.jam_density
             
             # Verify shapes
-            assert current.shape == (self.vsl_count,), f"Bad current action shape: {current.shape}"
-            assert prev.shape == (self.vsl_count,), f"Bad prev action shape: {prev.shape}"
+            assert current.shape == (2,), f"Bad current action shape: {current.shape}"
+            assert prev.shape == (2,), f"Bad prev action shape: {prev.shape}"
             assert speeds.shape == (self.n_segments,), f"Bad speeds shape: {speeds.shape}"
             assert densities.shape == (self.n_segments,), f"Bad densities shape: {densities.shape}"
 

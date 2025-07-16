@@ -11,13 +11,16 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import tensorflow as tf
 import numpy as np
-from agent_new import ACAgent
+# from agent import ACAgent
+from agent_critic import ACAgent
 from utils import *
-# from sim_env import MetaNetEnv
-from sim_env_mcity_new import MCityRoadEnv as MetaNetEnv
+from sim_env import MetaNetEnv
+# from sim_env_baseline import MetaNetEnv
 # from sim_env_eg import TwoLinkEnv as MetaNetEnv  # Import the specific environment
-from sim_env_deira import DeiraEnv as MetaNetEnv
 import matplotlib.pyplot as plt
+
+np.random.seed(42)
+tf.random.set_seed(42)
 
 def evaluate(agent, env, n_episodes=3):
     # Proper evaluation function running complete episodes
@@ -59,6 +62,8 @@ if __name__ == '__main__':
         score = 0
         step = 0
         current_action = 120
+        vsl_30steps = []
+        reward_30steps = 0
         
         # Warmup network
         # _ = agent.ac(tf.convert_to_tensor([state], dtype=tf.float32))
@@ -69,8 +74,20 @@ if __name__ == '__main__':
         while not done:
 
             # Take action every `control_interval` steps
-            if step % control_interval == 0:
+            if step % control_interval == 0 and step != 0:
+                # Store transition into agent memory
+                avg_speed = sum(vsl_30steps) / len(vsl_30steps)
+                print('Updating memory - avg speed: ', avg_speed, '    Reward for 30 steps: ', reward_30steps)
+                agent.memory.store_transition(
+                    np.array(state, dtype=np.float32),
+                    avg_speed,
+                    reward_30steps,
+                    np.array(next_state, dtype=np.float32),
+                    done
+                )
                 agent.learn()
+                reward_30steps = 0
+                vsl_30steps = []
                 action = agent.choose_action(state)
                 # print(f"Action chosen: {action:.1f} at step {step}")
                 prev_action = current_action
@@ -78,8 +95,10 @@ if __name__ == '__main__':
             else:
                 action = current_action    # Use the last action for the next steps
             
+            vsl_30steps.append(action)
             next_state, reward, done, _ = env.step(action)  # Take step
             score += reward                                 # Update score
+            reward_30steps += reward
             scores.append(score)                            # Store score for this episode
 
             # Debug prints to observe values
@@ -93,15 +112,6 @@ if __name__ == '__main__':
                 print(f"NaN detected at ep {ep}, step {step}!")
                 nan_detected = True
                 break
-            
-            # Store transition into agent memory
-            agent.memory.store_transition(
-                np.array(state, dtype=np.float32),
-                action,
-                reward,
-                np.array(next_state, dtype=np.float32),
-                done
-            )
             
             # Update state and step count; move on to next step
             state = next_state
@@ -135,7 +145,7 @@ if __name__ == '__main__':
     # print(history)
     plot_results(history)
     plot_learning_curve(range(n_eps), history['train'], 'training_curve.png')
-    plot_speeds_across_episodes(agent.speed_logs)
+    # plot_speeds_across_episodes(agent.speed_logs)
 
     # Only plot the episodes that actually completed:
     # completed_episodes = len(history['train'])
