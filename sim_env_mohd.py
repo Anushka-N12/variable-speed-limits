@@ -1,3 +1,25 @@
+'''-----------------------------------------------------------------------------------------------
+This file defines the MohdRoadEnv class, which simulates a traffic network in the MohdRoad environment.
+It is designed to  model part of Sheikh Mohammed Bin Zayed Road near Mirdif & Muhaisnah, Dubai, UAE.
+This stretch is known for its high traffic volume during peak hours, and real data has been collected. 
+
+It is a large 8-lane road with 3 segments considered, each ~1.5 km long.
+Segment 1:
+outgoing ramp - beginning of segment 1
+incoming ramp - end of segment 1
+
+Segment 2:
+outgoing - 700m from start of segment 2
+incoming - 1.8km
+outgoing - 3.1km
+outgoing - 3.7km
+
+Segment 3:
+outgoing - Beginning of segment 3
+incoming - 1km
+incoming - 1.1km
+---------------------------------------------------------------------------------------------------'''
+
 import numpy as np
 import casadi as cs
 from sym_metanet import engines, Network, Node, Link, Destination, MainstreamOrigin, MeteredOnRamp, LinkWithVsl

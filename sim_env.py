@@ -25,11 +25,12 @@ class MetaNetEnv:
         self.reward_scale = reward_scale          # Scaling factor for reward calculation
         self.time = 0
 
-        # Two VSL segments → two speed limits (Initial)
-        self.current_action = np.array([120.0, 120.0])  # shape (2,)
-        self.prev_action = np.array([120.0, 120.0])
         self.vsl_count = 2  # Number of VSL segments
         self.n_segments = 2  # Total number of segments in the network
+
+        # Two VSL segments → two speed limits (Initial)
+        self.current_action = np.array([120.0] * self.vsl_count)  
+        self.prev_action = np.array([120.0] * self.vsl_count)
 
         # Road parameters
         self.L = 1  # Link length

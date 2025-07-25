@@ -15,7 +15,8 @@ import numpy as np
 from agent_critic import ACAgent
 from utils import *
 # from sim_env import MetaNetEnv
-from sim_env_mcity2 import MetaNetEnv
+from sim_env_full import MetaNetEnv
+# from sim_env_mcity2 import MetaNetEnv
 # from sim_env_baseline import MetaNetEnv
 # from sim_env_eg import TwoLinkEnv as MetaNetEnv  # Import the specific environment
 import matplotlib.pyplot as plt
@@ -88,9 +89,18 @@ if __name__ == '__main__':
 
             # Debug prints to observe values
             if step % 50 == 0:
-                print(f"Step {step}: VSL {action:.1f}, Reward {reward:.2f}, "
-                      # f"Speeds {np.array(env.v).flatten()[::2]}")
-                      )
+                print(
+                    # f"Step {step}: VSL {action:.1f}, Reward {reward:.2f}, "
+                    # f"Speeds {np.array(env.v).flatten()[::2]}")
+                    f"Step {step}: "
+                    f"VSL {action}, "
+                    f"VSL_prev: {env.prev_action[0]}, "
+                    f"Reward {reward:.2f}, "
+                    f"Speeds: {np.round(np.array(env.v[2:4]).flatten(), 1)}, "
+                    f"Prev Speeds: {np.round(env.prev_v_vals[2:4].flatten(), 1)}, "
+                    # f"Pred Speeds: {np.round((np.array(env.v[0:2]).flatten() + np.random.normal(0, 1.0, size=env.v[0:2].shape).flatten()), 1)}, "
+                    # f"Incidents: {[0.01]*env.n_segments}"
+                )
 
             # NaN detection
             if np.isnan(reward) or np.isnan(action):

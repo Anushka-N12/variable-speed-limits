@@ -28,31 +28,6 @@ def plot_results(history):
     plt.savefig('training_progress.png')
     plt.show()
 
-def plot_resultsr(history):
-    # Create reversed copies of the history lists
-    # Using [::-1] to create a new reversed list without modifying the original history
-    reversed_train_history = history['train'][::-1]
-    reversed_eval_history = history['eval'][::-1]
-
-    plt.figure(figsize=(10,5))
-
-    # Plot the reversed training history
-    plt.plot(reversed_train_history, label='Training')
-
-    # For evaluation, we need to adjust the x-axis for the reversed data
-    # The np.linspace needs to span the length of the *reversed* training data
-    # but still map to the length of the *reversed* evaluation data.
-    # The number of points for linspace should be the length of the reversed_eval_history
-    # and the range should be based on the length of the reversed_train_history.
-    plt.plot(np.linspace(0, len(reversed_train_history)-1, len(reversed_eval_history)),
-             reversed_eval_history, 'r-', label='Evaluation', marker='o')
-
-    plt.xlabel('Episode') # Update label to reflect reversal
-    plt.ylabel('Score')
-    plt.legend()
-    plt.show()
-
-
 def plot_speeds_across_episodes(speed_records):
     # Convert to 2D arrays: one per episode
     episode_speeds = [np.vstack(ep) for ep in speed_records]
@@ -71,5 +46,4 @@ def plot_speeds_across_episodes(speed_records):
         plt.grid(True)
         plt.tight_layout()
         plt.show()
-
 

@@ -8,3 +8,4 @@ networkx
 matplotlib
 tf-keras
 scipy
+pandas

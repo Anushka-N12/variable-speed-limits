@@ -12,6 +12,7 @@ import numpy as np
 import casadi as cs
 from sym_metanet import engines, Network, Node, Link, Destination, MainstreamOrigin, MeteredOnRamp, LinkWithVsl
 import sym_metanet
+from data_demands import generate_demands  # Import demand generation function
 
 np.random.seed(42)
 
@@ -25,23 +26,26 @@ class MetaNetEnv:
         self.reward_scale = reward_scale          # Scaling factor for reward calculation
         self.time = 0
 
-        # Two VSL segments → two speed limits (Initial)
-        self.current_action = np.array([120.0, 120.0])  # shape (2,)
-        self.prev_action = np.array([120.0, 120.0])
         self.vsl_count = 2  # Number of VSL segments
         self.n_segments = 6  # Total number of segments in the network
 
+        # Two VSL segments → two speed limits (Initial)
+        self.current_action = np.array([80.0] * self.vsl_count) 
+        self.prev_action = np.array([80.0] * self.vsl_count)
+        self.prev_v_vals = np.array([80.0] * self.n_segments)
+
+        # self.STATE_DIM = self.vsl_count*2 + self.n_segments*2  # 2 speed limits + 2 previous speed limits + 6 speeds + 6 densities
+        self.STATE_DIM = (self.vsl_count * 5 + 1)   # 2 current VSLs + 2 previous VSLs + 2 current speeds + 2 previous speeds + 2 predicted speeds + incident flag
+        self.ACTION_RANGE = [60, 120]
+
         # Road parameters
-        self.L = 1.5  # Link length
+        self.L = 1  # Link length
         self.lanes = 2  # Number of lanes
 
         # Synthetic parameters
         self.free_flow_speed = 120   # Max speed (used to normalize)
         self.jam_density = 180       # Max density at which flow stops
         self.critical_density = 33.5 # Density where flow is maximized
-
-        self.STATE_DIM = self.vsl_count*2 + self.n_segments*2  # 2 speed limits + 2 previous speed limits + 6 speeds + 6 densities
-        self.ACTION_RANGE = [60, 120]
 
         # Demand profile over time (vehicles entering network); inflow at points O1 & O2
         self.demands = self.create_demands()
@@ -57,18 +61,17 @@ class MetaNetEnv:
         
         # Create time-varying demand arrays using interpolation
         time = np.arange(0, self.Tfin, self.T)
-
-        # d1 = np.interp(time, (2.0, 2.25), (3500, 1000))  # Mainstream origin demand
-        # d2 = np.interp(time, (0.0, 0.15, 0.35, 0.5), (500, 1500, 1500, 500))  # On-ramp demand
-        
         d1 = 2000 + 1500 * np.sin(2*np.pi*time/0.5)**2  # Mainstream; sinusoidal inflow at O1
         d2 = 500 + 300 * np.sin(2*np.pi*(time-0.25)/0.5)  # On-ramp; sinusoidal inflow at O2
-        return np.stack((d1, d2), axis=1)
+
+        return np.stack((d1, d2), axis=1)  # Combine into a 2D array (900, 2)
+        # d = generate_demands()  # Use the demand generation function
+        # return d
 
     def build_network(self):
         # Road and model parameters; Network constants from METANET literature
-        # L = 1.5               # Link length (km)
-        lanes = 2           # Number of lanes per link
+        # L = 1               # Link length (km)
+        # lanes = 2           # Number of lanes per link
         rho_max = 180       # Maximum density (veh/km/lane)
         rho_crit = 33.5     # Critical density (veh/km/lane)
         v_free = 102        # Free-flow speed (km/h)
@@ -92,24 +95,15 @@ class MetaNetEnv:
 
         # Define links with segment counts
         # L1 = Link[cs.SX](4, lanes, L, rho_max, rho_crit, v_free, a, name="L1")
-        L1 = LinkWithVsl[cs.SX](3, lanes, self.L, rho_max, rho_crit, v_free, a,
-                       segments_with_vsl={1, 2}, alpha=0.1, name="L1")
-        L2 = Link[cs.SX](2, lanes, self.L, rho_max, rho_crit, v_free, a, name="L2")
-
-        O2 = MeteredOnRamp[cs.SX](C[1], name="O2")
-        R2 = Link[cs.SX](1, 2, 0.1, rho_max, rho_crit, v_free, a, name="L3")
+        L1 = LinkWithVsl[cs.SX](4, self.lanes, self.L, rho_max, rho_crit, v_free, a,
+                       segments_with_vsl={2, 3}, alpha=0.1, name="L1")
+        L2 = Link[cs.SX](2, self.lanes, self.L, rho_max, rho_crit, v_free, a, name="L2")
 
         # Define network layout (paths from origins to destinations)
-        # self.net = (
-        #     Network(name="A1")
-        #     .add_path(origin=O1, path=(N1, L1, N2, L2, N3), destination=D1)
-        #     .add_origin(O2, N2)
-        # )
         self.net = (
-            Network("Test")
+            Network(name="A1")
             .add_path(origin=O1, path=(N1, L1, N2, L2, N3), destination=D1)
-            .add_path(origin=O2, path=(N3, R2, N2))
-            .add_origin(O1, N1)
+            .add_origin(O2, N2)
         )
 
         # Compile the symbolic MetaNet model into a CasADi function
@@ -132,16 +126,12 @@ class MetaNetEnv:
     def reset(self):
         # Reset simulation time
         self.time = 0
-        self.current_action = np.array([80.0] * self.vsl_count)
-        self.action = np.array([80.0] * self.vsl_count)
+        self.current_action = np.array([120.0] * self.vsl_count) 
+        self.action = np.array([120.0, 120.0] * self.vsl_count)
+        self.prev_v_vals = np.array([80.0] * self.n_segments)
 
-        # Initial conditions for density (rho), speed (v), and on-ramp queue (w)
-        # self.rho = cs.DM([22, 22, 22.5, 24, 30, 32]).T  # Transpose for column vector
-        # self.v = cs.DM([80, 80, 78, 72.5, 66, 62]).T
-        # self.w = cs.DM([0, 0]).T
-
-        self.rho = cs.DM([22, 22, 22.5, 24, 30])
-        self.v = cs.DM([80, 80, 78, 72.5, 66])
+        self.rho = cs.DM([22, 22, 22.5, 24, 30, 32])  # Need to change when n_segments changes
+        self.v = cs.DM([80, 80, 78, 72.5, 66, 62])
         self.w = cs.DM([0, 0])
 
         return self._build_state()
@@ -197,30 +187,28 @@ class MetaNetEnv:
             action = np.array([action, action])
         elif isinstance(action, list):
             action = np.array(action)
-        assert action.shape == (2,), f"Expected action shape (2,), got {action.shape}"
+        assert action.shape == (self.vsl_count,), f"Expected action shape ({self.vsl_count},), got {action.shape}"
 
         self.prev_action = self.current_action
         self.current_action = action
+        self.prev_v_vals = np.array(self.v).flatten()
 
         v_ctrl_O1 = cs.DM(action.reshape(-1, 1))  # (2, 1)
         r_O2 = cs.DM([[1.0]])
         u = cs.vertcat(v_ctrl_O1, r_O2)  # Now shape (3, 1)
 
         # Format inputs for MetaNet function
-        # v_ctrl = cs.DM([[float(action[0])], [float(action[1])]])  # if `action` is array-like
-        # u = cs.vertcat(v_ctrl, cs.DM([[1.0]]))
         # print('Rho shape:', np.array(self.rho).shape, 'V shape:', np.array(self.v).shape, 'W shape:', np.array(self.w).shape)
         x = cs.vertcat(self.rho, self.v, self.w)                        # State: densities, speeds, queues
-        # u = cs.vertcat(cs.DM([float(action)]), cs.DM([1.0]))           # Control: speed limit + metering rate
         d = cs.DM(self.demands[self.time])                             # Demand: from O1 and O2
         # print("Expected u shape:", self.F.size1_in(1)) 
         # Run MetaNet step
         x_next, _ = self.F(x, u, d)  # Discard q_all (second output) for now
 
         # Split next state
-        self.rho = x_next[0:5]
-        self.v   = x_next[5:10]
-        self.w   = x_next[10:12]
+        self.rho = x_next[0:6]     # Must be changed when n_segment changes
+        self.v   = x_next[6:12]
+        self.w   = x_next[12:14]
 
         # Construct new state, compute reward
         next_state = self._build_state()
@@ -235,45 +223,43 @@ class MetaNetEnv:
     def _build_state(self):
         try:
             # Convert and flatten all inputs
-            # current = np.asarray(self.current_action/120).flatten()
-            # prev = np.asarray(self.prev_action/120).flatten()
-            current = np.asarray(self.current_action / 120).flatten()
-            prev = np.asarray(self.prev_action / 120).flatten()
-            speeds = np.asarray(self.v).flatten() / self.free_flow_speed
-            densities = np.asarray(self.rho).flatten() / self.jam_density
+            current_vsl = np.asarray(self.current_action / 120).flatten()
+            prev_vsl = np.asarray(self.prev_action / 120).flatten()
+            current_speeds = np.asarray(self.v[2:4]).flatten() / self.free_flow_speed
+            prev_speeds = np.asarray(self.prev_v_vals[2:4]).flatten() / self.free_flow_speed
+            pred_speeds = current_speeds + np.random.normal(0, 1.0, size=current_speeds.shape).flatten() / self.free_flow_speed  # Slightly noisy
+            incident = np.array([0.01]).flatten()
+            # densities = np.asarray(self.rho).flatten() / self.jam_density
             
             # Verify shapes
-            assert current.shape == (2,), f"Bad current action shape: {current.shape}"
-            assert prev.shape == (2,), f"Bad prev action shape: {prev.shape}"
-            assert speeds.shape == (self.n_segments,), f"Bad speeds shape: {speeds.shape}"
-            assert densities.shape == (self.n_segments,), f"Bad densities shape: {densities.shape}"
+            assert current_vsl.shape == (self.vsl_count,), f"Bad current action shape: {current_vsl.shape}"
+            assert prev_vsl.shape == (self.vsl_count,), f"Bad prev action shape: {prev_vsl.shape}"
+            assert current_speeds.shape == (self.vsl_count,), f"Bad current speeds shape: {current_speeds.shape}"
+            assert prev_speeds.shape == (self.vsl_count,), f"Bad prev speeds shape: {prev_speeds.shape}"
+            assert pred_speeds.shape == (self.vsl_count,), f"Bad pred speeds shape: {pred_speeds.shape}"
+            assert incident.shape == (1,), f"Bad incident shape: {incident.shape}"
 
-            return np.concatenate([current, prev, speeds, densities]).astype(np.float32)
-            # return np.concatenate([current, speeds, densities]).astype(np.float32)
-
+            state = np.concatenate([
+                current_vsl,
+                prev_vsl,
+                current_speeds,
+                prev_speeds,
+                pred_speeds,
+                incident
+            ]).astype(np.float32)
+            return state
                     
         except Exception as e:
-            print(f"State construction failed: {e}")
-            print(f"Types - Current: {type(self.current_action)}, "
-                f"Prev: {type(self.prev_action)}, "
-                f"V: {type(self.v)}, R: {type(self.rho)}")
-            print(f"Shapes - V: {np.array(self.v).shape}, "
-                f"R: {np.array(self.rho).shape}")
+            print(f"Error building state: {e}")
+            # print(f"State construction failed: {e}")
+            # print(f"Types - Current: {type(self.current_action)}, "
+            #     f"Prev: {type(self.prev_action)}, "
+            #     f"V: {type(self.v)}, R: {type(self.rho)}")
+            # print(f"Shapes - V: {np.array(self.v).shape}, "
+            #     f"R: {np.array(self.rho).shape}")
             # raise
 
     def _compute_reward(self, baseline=False):
-        # Corrected stabilized reward calculation
-        # rho_np = np.array(self.rho).flatten()
-        # w_np = np.array(self.w).flatten()
-        
-        # epsilon = 1e-6  # Small constant to prevent division by zero
-        
-        # highway_veh_hours = np.sum(np.clip(rho_np, 0, None) * self.L * self.lanes + epsilon) * self.T
-        # queue_veh_hours = np.sum(np.clip(w_np, 0, None) + epsilon) * self.T
-        
-        # vehicle_hours = highway_veh_hours + queue_veh_hours
-        # return -np.tanh(vehicle_hours * self.reward_scale)
-
         # Encourage lower total time spent (TTS) on road + in ramp queues
         rho = np.clip(np.array(self.rho).flatten(), 0, self.jam_density)
         w = np.clip(np.array(self.w).flatten(), 0, 1000)  # Arbitrary large queue limit
@@ -295,10 +281,10 @@ class MetaNetEnv:
         # reward = (-total_hours + 0.5)         
         # reward = (-total_hours + 0.5) * 10           # Negative TTS as reward
         # reward = 1/total_hours
-        # Encourage higher VSLs when traffic is not congested
         
-        # vsl_term = np.mean(self.current_action[0]) / self.free_flow_speed  # Normalize to [0,1]
-        # reward += vsl_term * 1
+        # Encourage higher VSLs when traffic is not congested
+        vsl_term = np.mean(self.current_action[0]) / self.free_flow_speed  # Normalize to [0,1]
+        reward += vsl_term * 1
 
         # NaN check and fallback
         if np.isnan(reward):

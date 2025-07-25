@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from sim_env import MetaNetEnv
+from sim_env_full import MetaNetEnv
 
 env = MetaNetEnv()
 state = env.reset()
@@ -32,5 +32,5 @@ plt.xlabel("Timestep")
 plt.ylabel("Speed (km/h)")
 plt.legend()
 plt.grid()
-plt.savefig('modelless_run.png')
+# plt.savefig('modelless_run.png')
 plt.show()

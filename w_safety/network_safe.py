@@ -26,7 +26,7 @@ tf.random.set_seed(42)
 class SACNetwork(keras.Model):
     def __init__(self, min_s, max_s, # n_actions,
                  l1_dims=32, l2_dims=64,   # No. of neurons for full connected layers 1 & 2
-                 name='sacn', cp_dir='models', alpha=0.01):      # Checkpoint Directory
+                 name='sacn', cp_dir='sacn_cp', alpha=0.01):      # Checkpoint Directory
                  # Alpha used to be 0.0001, trying 0.01 now
 
         super(SACNetwork, self).__init__()
@@ -42,8 +42,8 @@ class SACNetwork(keras.Model):
         self.noise = 1e-6
 
         # Two optimizers for actor and value outputs
-        self.v_optimizer = Adam(learning_rate=alpha)
-        self.a_optimizer = Adam(learning_rate=alpha)
+        self.v_optimizer = SGD(learning_rate=alpha)
+        self.a_optimizer = SGD(learning_rate=alpha)
     
         self.l1 = Dense(self.l1_dims)
         self.l1_activation = LeakyReLU(alpha=0.01)
@@ -58,6 +58,9 @@ class SACNetwork(keras.Model):
         self.mean = Dense(1, activation='tanh')                                     # tanh gives [-1, 1]
         self.scaled_mean = Lambda(lambda x: min_s + (max_s - min_s) * (x + 1) / 2)  # Scale to [min, max]
         self.std_dev = Dense(1, activation='softplus')  # Softplus ensures positive std dev
+
+        self.safety_q = Dense(1, activation=None)  # New safety critic
+
         # Build network
         # self.build((None, 14))
 
@@ -71,12 +74,18 @@ class SACNetwork(keras.Model):
         std_dev = self.std_dev(features)
         std_dev = tf.clip_by_value(std_dev, self.noise, 1)
 
-        return value, mean, std_dev 
+        safety = self.safety_q(features)
+
+        return value, mean, std_dev, safety
     
-    # def get_value(self, state):
-    #     ex = self.l1_activation(self.l1(state))
-    #     features = self.l2_activation(self.l2(ex))
-    #     return self.value_f(features)
+    def get_q_safety(self, state_action):
+        features = self.l2(self.l1(state_action))
+        return self.safety_q(features)  # safety_q should be a Dense layer like q_f
+    
+    def get_value(self, state):
+        ex = self.l1_activation(self.l1(state))
+        features = self.l2_activation(self.l2(ex))
+        return self.value_f(features)
 
     def get_policy_params(self, state):
         ex = self.l1_activation(self.l1(state))
@@ -86,7 +95,7 @@ class SACNetwork(keras.Model):
         return mean, std_dev
     
     def sample_normal(self, state, reparameterize=True):
-        _, mean, std_dev = self.call(state)
+        _, mean, std_dev,_ = self.call(state)
         probabilities = tfp.distributions.Normal(mean, std_dev)     # Create distribution
         actions = probabilities.sample()                            # Sample action 
         # action = tf.math.tanh(actions) * self.max_s                 # Apply tanh to squash action into range [-1, 1], 
