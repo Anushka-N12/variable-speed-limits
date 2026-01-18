@@ -52,7 +52,7 @@ class SACNetwork(keras.Model):
         # Tried just relu, trying leakyrelu now
 
         # Value function 
-        self.value_f = Dense(1, activation=None)       
+        # self.value_f = Dense(1, activation=None)       
         
         # Policy function, Output will be mean & standard deviation to represent distribution
         self.mean = Dense(1, activation='tanh')                                     # tanh gives [-1, 1]
